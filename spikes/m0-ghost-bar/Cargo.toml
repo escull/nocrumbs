@@ -1,0 +1,21 @@
+[package]
+name = "m0-ghost-bar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+eframe = "0.37.0"
+egui = "0.37"
+egui_extras = "0.37.0"
+nocrumbs-core = { version = "0.0.1", path = "../../crates/nocrumbs-core" }
+nocrumbs-testfs = { version = "0.0.1", path = "../../crates/nocrumbs-testfs" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+egui_kittest = "0.37.0"
