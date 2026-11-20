@@ -34,7 +34,7 @@ Keep it current: every working session, update the milestone row and add one lin
 |---|---|---|
 | Acceptance criteria met (§15) | 0 of 12 | measured by hand until M1 |
 | Requirements with a passing test | 0 of *n/a* (IDs assigned in M1) | measured by `cargo xtask spec` once it exists |
-| Automated tests passing | 5 core + 14 completion cases + 14 headless UI + 1 format = 34 | measured, `cargo test --workspace` |
+| Automated tests passing | 68: 5 core units, 14 completion cases, 34 keystroke scripts (headless core), 14 egui UI, 1 format | measured, `cargo test --workspace` |
 | 100k-row folder, keystroke cost (optimised, headless) | 6–9 ms typing, ≈ 13 ms per glob-filter keystroke; ≈ 1 ms/frame idle | measured, see `docs/spike.md` |
 | Remaining to alpha | ≈ 50–95 focused hours | estimated, uncalibrated |
 | Remaining to Windows 1.0 | ≈ 120–230 focused hours | estimated, uncalibrated |
@@ -47,7 +47,7 @@ Keep it current: every working session, update the milestone row and add one lin
 | # | Milestone | Status | Estimate (h) | Exit criteria |
 |---|---|---|---|---|
 | M0 | **Spike**: egui bar with ghost text, 100k-row virtual list, IME, AccessKit pass | **in progress**: ghost text and 100k list proven by tests; IME and screen reader need a human | 8–16 | Go/no-go note in `docs/spike.md`; the three risks in brief §3.2 each answered with evidence |
-| M1 | **Core**: `nocrumbs-core` + `nocrumbs-testfs` + keystroke-test harness; `spec/requirements.toml` | not started | 40–80 | Brief §4–§8 pass headless; every bug from the HTML concept is a regression test (§16) |
+| M1 | **Core**: `nocrumbs-core` + `nocrumbs-testfs` + keystroke-test harness; `spec/requirements.toml` | **started**: `Bar` state machine, `sim::Session` text-field simulator and 34 keystroke scripts are in | 40–80 | Brief §4–§8 pass headless; every bug from the HTML concept is a regression test (§16) |
 | M2 | **Windows shell**: real `Fs`/`Platform`, async listing, Recycle Bin, clipboard interop, watcher, config/history | not started | 40–70 | §15 items 8–11 met on Windows; portable mode works |
 | M3 | **UI polish, accessibility, signed release** | not started | 30–60 | All §15 met; accessibility checks in §13; **v1.0 (Windows)** |
 | M4 | **Linux port** | not started | 30–60 | Core unchanged; platform crate only |
@@ -61,9 +61,9 @@ Ranked; the next thing to do is first.
 |---|---|---|
 | 0 | Finish M0: the human checklist in `docs/spike.md` (ghost on screen, IME, Narrator/NVDA, mouse, high DPI) | 1–3 |
 | 1 | Assign stable requirement IDs to brief §4–§15 and create `spec/requirements.toml` | 4–8 |
-| 2 | Move the spike's bar logic out of the egui app into a headless `nocrumbs-core` state machine, so the keystroke tests don't need a UI | 12–24 |
-| 3 | Bar parser: aliases, quoting, name validation, `:cd` path completion, resolution order | 16–30 |
-| 4 | Selection model, multi-select, clipboard and undo stack in core | 20–40 |
+| 2 | Bar parser: aliases, quoting, name validation, `:cd` path completion, resolution order | 16–30 |
+| 3 | Real commands in core (`:sort`, `:hidden`, `:mkdir`, `:rename`, `:rm` to trash, clipboard) with undo | 20–40 |
+| 4 | Multi-select and the selection model in core | 10–20 |
 | 5 | Font fallback stack for arbitrary file names (CJK, Arabic, Thai, emoji): default egui fonts draw tofu | 6–12 |
 
 ## Risks
@@ -84,6 +84,8 @@ Tracked in the brief, §18 (toolkit is decided: egui/eframe). Next ones to settl
 ## Progress log
 
 Newest first. One line per entry: date (milestone, what changed); estimates unchanged/changed.
+
+2026-11-20 (M1): Bar logic moved out of the egui app into `nocrumbs-core`: a headless `Bar` state machine (ghost text, staged Esc, Tab descent, Enter, list preview/highlight/selection, scroll and blur requests) plus `sim::Session`, a simulated text field. 34 keystroke scripts now run in the core with no UI; the 14 egui tests pass unchanged and 100k timings are unchanged. The egui app shrank to a thin renderer (~390 lines). `Fs` now requires `Send + Sync`. Estimates unchanged.
 
 2026-11-20 (M0): Cargo workspace (`nocrumbs-core`, `nocrumbs-testfs`, `spikes/m0-ghost-bar`), CI workflow, and the egui spike. Ghost text, staged Esc, Tab descent with canonical casing, Backspace-without-reoffer, command arguments, glob-with-path, and a 100k-row virtual list are all covered by 14 headless UI tests and 14 completion cases; clippy clean. Found: egui's `TextEdit` overwrites the focus-lock filter every frame (set ours after `show`), and default fonts lack `⇥ ↵ →`. IME and screen-reader checks remain for a human. Estimates unchanged.
 

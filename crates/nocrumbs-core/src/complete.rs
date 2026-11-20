@@ -68,6 +68,13 @@ pub struct Analysis {
     pub completion: Option<Completion>,
 }
 
+impl Analysis {
+    /// The analysis of the idle bar (showing the current folder): nothing typed, nothing offered.
+    pub fn idle() -> Self {
+        Self { mode: Mode::Empty, dir: None, glob: None, completion: None }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resolved {
     pub path: String,

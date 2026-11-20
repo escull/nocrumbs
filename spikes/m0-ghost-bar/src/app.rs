@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+//! The egui front end: a thin renderer over [`nocrumbs_core::Bar`].
+//!
+//! egui's `TextEdit` still does the text editing (caret, mouse, clipboard, IME). This file
+//! only forwards what happened to the bar and obeys what the bar asks for. All behaviour
+//! (completion, ghost text, Esc stages, navigation, selection) lives in `nocrumbs-core`.
+
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -7,7 +13,7 @@ use egui::text::{CCursor, CCursorRange};
 use egui::text_edit::TextEditState;
 use egui::{Align, Color32, Event, EventFilter, Id, ImeEvent, Key, RichText, Sense, TextStyle};
 use egui_extras::{Column, TableBuilder};
-use nocrumbs_core::{Analysis, BarContext, Entry, Glob, Mode, analyze, display_path, resolve};
+use nocrumbs_core::{Bar, EditKind, Key as BarKey, Mode, Sel, Tone};
 use nocrumbs_testfs::MemFs;
 
 use crate::format;
@@ -26,18 +32,10 @@ pub fn setup(ctx: &egui::Context) {
     });
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Tone {
-    Info,
-    Good,
-    Bad,
-}
-
 #[derive(Debug, Default)]
 struct Perf {
     frames: VecDeque<f32>,
-    complete_ms: f32,
-    filter_ms: f32,
+    edit_ms: f32,
 }
 
 impl Perf {
@@ -55,35 +53,15 @@ impl Perf {
     }
 }
 
-/// The spike application. All the logic that matters lives in [`App::show`] so that
-/// headless tests can drive exactly what the window runs.
+/// The spike application. [`App::show`] is one frame of the whole UI; `eframe::App::ui` calls
+/// it, and so do the headless tests.
 #[derive(Debug)]
 pub struct App {
-    fs: MemFs,
-    cwd: String,
-    show_hidden: bool,
-
-    /// The bar's text, **including** any ghost text at the end.
-    text: String,
-    /// How many chars at the end of `text` are ghost text (selected, not yet typed).
-    ghost_chars: usize,
-    composing: bool,
+    bar: Bar,
     blurred: bool,
     first_frame: bool,
-
-    /// Analysis of the typed text (ghost excluded), and the typed text it was computed for.
-    analysis: Analysis,
-    analysed_for: String,
-
-    view_dir: String,
-    entries: Arc<[Entry]>,
-    view: Vec<u32>,
-    view_key: (String, Option<String>, bool),
-    hl_row: Option<usize>,
-    selected: Option<usize>,
     scroll_to: Option<usize>,
-
-    status: (String, Tone),
+    seen_errors: u32,
     error_until: Option<Instant>,
     perf: Perf,
 }
@@ -96,285 +74,96 @@ impl App {
 
     /// Like [`App::new`], but starting in `start` (falls back to home if it does not exist).
     pub fn with_start(big_n: usize, start: &str) -> Self {
-        use nocrumbs_core::Fs;
-        let fs = MemFs::sample(true, big_n);
-        let start = fs.canonical_dir(start).unwrap_or_else(|| HOME.to_string());
-        let mut app = Self {
-            fs,
-            cwd: start.clone(),
-            show_hidden: false,
-            text: String::new(),
-            ghost_chars: 0,
-            composing: false,
-            blurred: false,
-            first_frame: true,
-            analysis: Analysis { mode: Mode::Empty, dir: None, glob: None, completion: None },
-            analysed_for: String::new(),
-            view_dir: start,
-            entries: Arc::from(Vec::new()),
-            view: Vec::new(),
-            view_key: (String::new(), None, false),
-            hl_row: None,
-            selected: None,
-            scroll_to: None,
-            status: (String::new(), Tone::Info),
-            error_until: None,
-            perf: Perf::default(),
-        };
-        app.text = app.shown_cwd();
-        app.reanalyze();
-        app.set_status(
+        let fs = Arc::new(MemFs::sample(true, big_n));
+        let mut bar = Bar::new(fs, HOME, start, '/');
+        bar.set_status(
             "Try: Doc then Tab · ~/Down · /big/report-09 · *.pdf · ~/Downloads/*.pdf · :sor · ../",
             Tone::Info,
         );
-        app
+        Self {
+            bar,
+            blurred: false,
+            first_frame: true,
+            scroll_to: None,
+            seen_errors: 0,
+            error_until: None,
+            perf: Perf::default(),
+        }
     }
 
     // ----- test / inspection surface -----
 
+    pub fn bar(&self) -> &Bar {
+        &self.bar
+    }
     /// The whole bar text, including ghost text.
     pub fn text(&self) -> &str {
-        &self.text
+        self.bar.text()
     }
-    /// Number of ghost characters at the end of [`App::text`].
     pub fn ghost_chars(&self) -> usize {
-        self.ghost_chars
+        self.bar.ghost_chars()
     }
     /// What the user has actually typed (the bar text without the ghost).
     pub fn typed(&self) -> &str {
-        let keep = self.text.chars().count() - self.ghost_chars;
-        let end = self.text.char_indices().nth(keep).map_or(self.text.len(), |(i, _)| i);
-        &self.text[..end]
+        self.bar.typed()
     }
     pub fn cwd(&self) -> &str {
-        &self.cwd
+        self.bar.cwd()
     }
     pub fn view_dir(&self) -> &str {
-        &self.view_dir
+        self.bar.view_dir()
     }
     pub fn shown_rows(&self) -> usize {
-        self.view.len()
+        self.bar.row_count()
     }
     /// Name of the row carrying the completion highlight.
     pub fn highlighted(&self) -> Option<&str> {
-        self.hl_row.map(|r| self.entries[self.view[r] as usize].name.as_str())
+        self.bar.highlighted_name()
     }
     pub fn selected_name(&self) -> Option<&str> {
-        self.selected.map(|r| self.entries[self.view[r] as usize].name.as_str())
+        self.bar.selected_name()
     }
     pub fn status_text(&self) -> &str {
-        &self.status.0
+        self.bar.status().0
     }
     pub fn bar_id() -> Id {
         Id::unique("nocrumbs-bar")
     }
 
-    // ----- helpers -----
+    // ----- plumbing between the bar and egui -----
 
-    fn bar_ctx(&self) -> BarContext<'_> {
-        BarContext { fs: &self.fs, cwd: &self.cwd, home: HOME, sep: '/', show_hidden: self.show_hidden }
-    }
-
-    fn shown_cwd(&self) -> String {
-        display_path(&self.cwd, &self.bar_ctx())
-    }
-
-    fn set_status(&mut self, msg: impl Into<String>, tone: Tone) {
-        self.status = (msg.into(), tone);
-    }
-
-    fn set_selection(ctx: &egui::Context, from: usize, to: usize) {
+    fn set_selection(ctx: &egui::Context, sel: Sel) {
         let id = Self::bar_id();
         let mut st = TextEditState::load(ctx, id).unwrap_or_default();
-        st.cursor.set_char_range(Some(CCursorRange::two(CCursor::new(from), CCursor::new(to))));
+        st.cursor.set_char_range(Some(CCursorRange::two(CCursor::new(sel.anchor), CCursor::new(sel.caret))));
         st.store(ctx, id);
         ctx.request_repaint();
     }
 
-    fn char_len(&self) -> usize {
-        self.text.chars().count()
-    }
-
-    /// Recompute the analysis (and the list view) for the typed text, if it changed.
-    fn reanalyze(&mut self) {
-        let typed = self.typed().to_string();
-        if typed == self.analysed_for {
-            return;
+    /// Do what the bar has asked for: select, scroll, blur.
+    fn apply_requests(&mut self, ctx: &egui::Context) {
+        if let Some(sel) = self.bar.take_selection_request() {
+            Self::set_selection(ctx, sel);
         }
-        let t0 = Instant::now();
-        let idle = typed == self.shown_cwd();
-        self.analysis = if idle {
-            Analysis { mode: Mode::Empty, dir: None, glob: None, completion: None }
-        } else {
-            analyze(&typed, &self.bar_ctx())
-        };
-        self.perf.complete_ms = t0.elapsed().as_secs_f32() * 1000.0;
-        self.analysed_for = typed;
-        self.refresh_view();
-    }
-
-    fn refresh_view(&mut self) {
-        let dir = self.analysis.dir.clone().unwrap_or_else(|| self.cwd.clone());
-        let glob = self.analysis.glob.clone();
-        let key = (dir.clone(), glob.clone(), self.show_hidden);
-        if key != self.view_key {
-            let t0 = Instant::now();
-            if dir != self.view_dir || self.entries.is_empty() {
-                self.entries = self.fs_entries(&dir);
-                self.selected = None;
-            }
-            let g = glob.as_deref().map(Glob::new);
-            self.view = self
-                .entries
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| (self.show_hidden || !e.hidden) && g.as_ref().is_none_or(|g| g.is_match(&e.name)))
-                .map(|(i, _)| i as u32)
-                .collect();
-            self.perf.filter_ms = t0.elapsed().as_secs_f32() * 1000.0;
-            self.view_dir = dir;
-            self.view_key = key;
-            self.selected = None;
+        if let Some(row) = self.bar.take_scroll_request() {
+            self.scroll_to = Some(row);
         }
-        // Completion highlight: only for path completions, on the row it would navigate to.
-        let new_hl = match (&self.analysis.mode, &self.analysis.completion) {
-            (Mode::Path, Some(c)) => self.view.iter().position(|&i| self.entries[i as usize].name == c.name),
-            _ => None,
-        };
-        if new_hl != self.hl_row {
-            self.hl_row = new_hl;
-            if new_hl.is_some() {
-                self.scroll_to = new_hl;
-            }
+        if self.bar.take_blur_request() {
+            ctx.memory_mut(|m| m.surrender_focus(Self::bar_id()));
+            self.blurred = true;
         }
-    }
-
-    fn fs_entries(&self, dir: &str) -> Arc<[Entry]> {
-        use nocrumbs_core::Fs;
-        self.fs.entries(dir).unwrap_or_else(|| Arc::from(Vec::new()))
-    }
-
-    // ----- ghost text -----
-
-    /// Append the completion's ghost text, selected, so the next keystroke overwrites it.
-    fn offer_ghost(&mut self, ctx: &egui::Context) {
-        let Some(c) = &self.analysis.completion else { return };
-        if c.ghost.is_empty() || !matches!(self.analysis.mode, Mode::Path | Mode::Command) {
-            return;
-        }
-        let typed_chars = self.char_len() - self.ghost_chars;
-        let ghost = c.ghost.clone();
-        self.text.truncate(self.typed().len());
-        self.text.push_str(&ghost);
-        self.ghost_chars = ghost.chars().count();
-        Self::set_selection(ctx, typed_chars, self.char_len());
-    }
-
-    fn clear_ghost(&mut self, ctx: &egui::Context) {
-        let n = self.typed().len();
-        self.text.truncate(n);
-        self.ghost_chars = 0;
-        let end = self.char_len();
-        Self::set_selection(ctx, end, end);
-    }
-
-    /// Tab: accept the completion (canonical casing), then offer the next level.
-    fn accept(&mut self, ctx: &egui::Context) {
-        self.reanalyze();
-        let Some(c) = self.analysis.completion.clone() else {
-            // Nothing to complete: keep focus, and make sure any ghost is committed as typed.
-            self.ghost_chars = 0;
-            let end = self.char_len();
-            Self::set_selection(ctx, end, end);
-            return;
-        };
-        self.text = c.accepted;
-        self.ghost_chars = 0;
-        self.reanalyze();
-        let end = self.char_len();
-        Self::set_selection(ctx, end, end);
-        self.offer_ghost(ctx);
-    }
-
-    fn go_idle(&mut self, ctx: &egui::Context) {
-        self.text = self.shown_cwd();
-        self.ghost_chars = 0;
-        self.analysed_for = String::from("\u{0}");
-        self.reanalyze();
-        Self::set_selection(ctx, 0, self.char_len());
-    }
-
-    // ----- Enter -----
-
-    fn submit(&mut self, ctx: &egui::Context) {
-        self.reanalyze_full();
-        let input = self.text.clone(); // ghost included, as a browser's URL bar does
-        let a = analyze(&input, &self.bar_ctx());
-        match a.mode {
-            Mode::Command => {
-                self.set_status(
-                    format!("Command `{}` (commands are not implemented in the spike)", input.trim()),
-                    Tone::Info,
-                );
-                return;
-            }
-            Mode::Glob => {
-                self.set_status("Filter active. Esc clears it.", Tone::Good);
-                return;
-            }
-            _ => {}
-        }
-        match resolve(&input, &self.bar_ctx()) {
-            Some(r) if r.is_dir => {
-                self.cwd = r.path.clone();
-                self.go_idle(ctx);
-                self.set_status(format!("Now in {}", self.shown_cwd()), Tone::Good);
-            }
-            Some(r) => {
-                let (dir, name) = r.path.rsplit_once('/').unwrap_or(("", &r.path));
-                self.cwd = if dir.is_empty() { "/".into() } else { dir.into() };
-                let name = name.to_string();
-                self.go_idle(ctx);
-                self.selected = self.view.iter().position(|&i| self.entries[i as usize].name == name);
-                self.scroll_to = self.selected;
-                self.set_status(format!("Selected {name}"), Tone::Good);
-            }
-            None => {
-                self.error_until = Some(Instant::now() + Duration::from_millis(400));
-                self.set_status(format!("No such path: {}", input.trim()), Tone::Bad);
-            }
-        }
-    }
-
-    fn reanalyze_full(&mut self) {
-        self.analysed_for = String::from("\u{0}");
-        self.reanalyze();
-    }
-
-    fn move_selection(&mut self, dir: i32) {
-        let n = self.view.len();
-        if n == 0 {
-            return;
-        }
-        let next = match (self.selected, dir) {
-            (None, d) if d > 0 => 0,
-            (None, _) => n - 1,
-            (Some(i), d) => ((i as i64 + d as i64).rem_euclid(n as i64)) as usize,
-        };
-        self.selected = Some(next);
-        self.scroll_to = Some(next);
     }
 
     // ----- the window -----
 
-    /// One frame of the whole UI. `eframe::App::ui` calls this; so do the tests.
+    /// One frame of the whole UI.
     pub fn show(&mut self, ui: &mut egui::Ui) {
         let t0 = Instant::now();
         let ctx = ui.ctx().clone();
 
         egui::Panel::top("bar-panel").show(ui, |ui| {
             ui.add_space(8.0);
-            self.bar(ui, &ctx);
+            self.bar_row(ui, &ctx);
             ui.add_space(4.0);
             ui.label(
                 RichText::new("Tab complete · Enter go · Up/Down select · Esc: ghost, then revert, then blur · / or Ctrl+L focus the bar")
@@ -393,32 +182,31 @@ impl App {
         self.perf.push(t0.elapsed().as_secs_f32() * 1000.0);
     }
 
-    fn bar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn bar_row(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let id = Self::bar_id();
         if self.first_frame {
             self.first_frame = false;
             ctx.memory_mut(|m| m.request_focus(id));
-            Self::set_selection(ctx, 0, self.char_len());
         }
         let focused = ctx.memory(|m| m.has_focus(id));
 
         // Read this frame's input before the TextEdit consumes it.
         let events = ctx.input(|i| i.events.clone());
-        let (mut tab, mut esc, mut enter, mut up, mut down, mut deleted) = (false, false, false, false, false, false);
-        let mut refocus = false;
+        let mut keys: Vec<BarKey> = Vec::new();
+        let (mut deleted, mut refocus) = (false, false);
         for ev in &events {
             match ev {
-                Event::Ime(ImeEvent::Preedit { text, .. }) => self.composing = !text.is_empty(),
-                Event::Ime(ImeEvent::Commit(_)) => self.composing = false,
+                Event::Ime(ImeEvent::Preedit { text, .. }) => self.bar.set_composing(!text.is_empty()),
+                Event::Ime(ImeEvent::Commit(_)) => self.bar.set_composing(false),
                 Event::Cut => deleted = true,
                 Event::Text(t) if t == "/" && !focused => refocus = true,
                 Event::Key { key, pressed: true, modifiers, .. } => match key {
                     Key::Backspace | Key::Delete => deleted = true,
-                    Key::Tab if !modifiers.shift => tab = true,
-                    Key::Escape => esc = true,
-                    Key::Enter => enter = true,
-                    Key::ArrowUp => up = true,
-                    Key::ArrowDown => down = true,
+                    Key::Tab if !modifiers.shift => keys.push(BarKey::Tab),
+                    Key::Escape => keys.push(BarKey::Escape),
+                    Key::Enter => keys.push(BarKey::Enter),
+                    Key::ArrowUp => keys.push(BarKey::Up),
+                    Key::ArrowDown => keys.push(BarKey::Down),
                     Key::L if modifiers.command => refocus = true,
                     _ => {}
                 },
@@ -429,37 +217,27 @@ impl App {
             self.blurred = false;
             ctx.memory_mut(|m| m.request_focus(id));
         }
-
-        // Keys the TextEdit must not act on: Tab (would move focus), Esc (would blur),
-        // vertical arrows (list selection).
         if focused {
-            if tab && !self.composing {
-                self.accept(ctx);
-            }
-            if esc {
-                self.escape(ctx);
-            }
-            if up {
-                self.move_selection(-1);
-            }
-            if down {
-                self.move_selection(1);
-            }
-            if enter && !self.composing {
-                self.submit(ctx);
+            for k in keys {
+                self.bar.key(k);
             }
         }
+        if self.bar.error_count() != self.seen_errors {
+            self.seen_errors = self.bar.error_count();
+            self.error_until = Some(Instant::now() + Duration::from_millis(400));
+        }
+        self.apply_requests(ctx);
 
         let flash = self.error_until.is_some_and(|t| t > Instant::now());
-        if !flash {
-            self.error_until = None;
-        } else {
+        if flash {
             ctx.request_repaint_after(Duration::from_millis(100));
+        } else {
+            self.error_until = None;
         }
 
         ui.horizontal(|ui| {
-            let (label, color) = match self.analysis.mode {
-                Mode::Command => ("command", Color32::from_rgb(0x6d, 0x4a, 0xff)),
+            let (label, color) = match self.bar.mode() {
+                Mode::Command => ("command", ACCENT),
                 Mode::Glob => ("filter", Color32::from_rgb(0xfe, 0xbc, 0x2e)),
                 Mode::Path => ("path", Color32::from_gray(150)),
                 Mode::Empty => ("", Color32::from_gray(150)),
@@ -467,14 +245,18 @@ impl App {
             if !label.is_empty() {
                 ui.label(RichText::new(label.to_uppercase()).small().strong().color(color));
             }
-            let out = egui::TextEdit::singleline(&mut self.text)
+
+            // The bar owns the text; the TextEdit edits a copy and we report what changed.
+            let mut buf = self.bar.text().to_owned();
+            let out = egui::TextEdit::singleline(&mut buf)
                 .id(id)
                 .font(TextStyle::Monospace)
                 .desired_width(f32::INFINITY)
                 .hint_text("path, *.glob or :command")
                 .show(ui);
-            // TextEdit sets its own focus filter every frame, so ours must be set after it:
-            // Tab must not move focus and Esc must not blur (we stage Esc ourselves).
+
+            // TextEdit sets its own focus filter every frame, so ours must come after it:
+            // Tab must not move focus and Esc must not blur (the bar stages Esc itself).
             ctx.memory_mut(|m| {
                 m.set_focus_lock_filter(
                     id,
@@ -493,54 +275,28 @@ impl App {
                 // Enter makes a singleline TextEdit surrender focus; the bar keeps it.
                 out.response.request_focus();
             }
+
+            let range = out.state.cursor.char_range();
             if out.response.changed() {
-                self.on_user_edit(ctx, deleted, &out.state);
-            } else if self.ghost_chars > 0 {
-                // The ghost stays only while it is still exactly the selection at the end.
-                let n = self.char_len();
-                let still = out.state.cursor.char_range().is_some_and(|r| {
-                    let [a, b] = r.sorted_cursors();
-                    a.index.0 == n - self.ghost_chars && b.index.0 == n
-                });
-                if !still {
-                    self.ghost_chars = 0;
-                }
+                let caret = range.map_or_else(|| buf.chars().count(), |r| r.primary.index.0);
+                let kind = if deleted { EditKind::Delete } else { EditKind::Insert };
+                let t0 = Instant::now();
+                self.bar.edited(buf, caret, kind);
+                self.perf.edit_ms = t0.elapsed().as_secs_f32() * 1000.0;
+            } else if let Some(r) = range {
+                let [a, b] = r.sorted_cursors();
+                self.bar.observe_selection(Sel { anchor: a.index.0, caret: b.index.0 });
             }
+            self.apply_requests(ctx);
         });
-    }
-
-    fn on_user_edit(&mut self, ctx: &egui::Context, deleted: bool, state: &TextEditState) {
-        // Whatever was selected (ghost) has been replaced or removed by this edit.
-        self.ghost_chars = 0;
-        self.reanalyze();
-        let caret_at_end = state.cursor.char_range().is_some_and(|r| r.primary.index.0 == self.char_len());
-        if !deleted && !self.composing && caret_at_end {
-            self.offer_ghost(ctx);
-        }
-        let more = self.analysis.completion.as_ref().map_or(0, |c| c.matches.saturating_sub(1));
-        if self.analysis.mode == Mode::Path && more > 0 {
-            self.set_status(format!("+{more} more match{}", if more == 1 { "" } else { "es" }), Tone::Info);
-        }
-    }
-
-    /// Staged Esc: remove the ghost, then revert the bar, then give up focus.
-    fn escape(&mut self, ctx: &egui::Context) {
-        if self.ghost_chars > 0 {
-            self.clear_ghost(ctx);
-        } else if self.typed() != self.shown_cwd() {
-            self.go_idle(ctx);
-        } else {
-            ctx.memory_mut(|m| m.surrender_focus(Self::bar_id()));
-            self.blurred = true;
-        }
     }
 
     fn status_line(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             // The current path is always visible, even while the bar holds a filter.
-            ui.label(RichText::new(display_path(&self.view_dir, &self.bar_ctx())).monospace().strong());
-            ui.label(format!("· {} of {} shown", self.view.len(), self.entries.len()));
-            let (msg, tone) = &self.status;
+            ui.label(RichText::new(self.bar.view_dir_display()).monospace().strong());
+            ui.label(format!("· {} of {} shown", self.bar.row_count(), self.bar.entry_count()));
+            let (msg, tone) = self.bar.status();
             let color = match tone {
                 Tone::Info => ui.visuals().weak_text_color(),
                 Tone::Good => Color32::from_rgb(0x4a, 0xd2, 0x95),
@@ -552,11 +308,10 @@ impl App {
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.label(
                     RichText::new(format!(
-                        "frame {:.2} ms avg / {:.2} max · complete {:.2} ms · filter {:.2} ms",
+                        "frame {:.2} ms avg / {:.2} max · last edit {:.2} ms",
                         self.perf.avg(),
                         self.perf.max(),
-                        self.perf.complete_ms,
-                        self.perf.filter_ms
+                        self.perf.edit_ms
                     ))
                     .small()
                     .weak(),
@@ -577,7 +332,8 @@ impl App {
         if let Some(row) = self.scroll_to.take() {
             table = table.scroll_to_row(row, Some(Align::Center));
         }
-        let (entries, view, selected, hl) = (&self.entries, &self.view, self.selected, self.hl_row);
+        let bar = &self.bar;
+        let (selected, hl) = (bar.selected_row(), bar.highlighted_row());
         let mut clicked = None;
         table
             .header(ROW_H, |mut h| {
@@ -588,9 +344,9 @@ impl App {
                 }
             })
             .body(|body| {
-                body.rows(ROW_H, view.len(), |mut row| {
+                body.rows(ROW_H, bar.row_count(), |mut row| {
                     let r = row.index();
-                    let e = &entries[view[r] as usize];
+                    let e = bar.row(r);
                     row.set_selected(selected == Some(r));
                     let is_hl = hl == Some(r);
                     let paint_hl = |ui: &mut egui::Ui| {
@@ -623,7 +379,7 @@ impl App {
                 });
             });
         if clicked.is_some() {
-            self.selected = clicked;
+            self.bar.select_row(clicked);
         }
     }
 }

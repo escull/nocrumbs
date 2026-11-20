@@ -19,7 +19,7 @@ pub struct Entry {
 /// normalised (no `.`/`..`). The platform layer is responsible for mapping real
 /// paths (drive letters, UNC, ...) onto this shape; the core never assumes a
 /// particular separator beyond that.
-pub trait Fs {
+pub trait Fs: Send + Sync {
     /// The canonically-cased form of `dir` if it exists and is a directory.
     fn canonical_dir(&self, dir: &str) -> Option<String>;
     /// Entries of a directory given by its canonical path. Sorted folders-first, then by name.
