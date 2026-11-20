@@ -18,6 +18,7 @@
 //! `sim::Session` is a headless text field that does exactly this, so the whole behaviour spec
 //! can be tested as keystroke scripts.
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
@@ -26,10 +27,13 @@ use crate::command::{Command, HELP, SortDir, SortKey, parse as parse_command};
 use crate::complete::{
     Analysis, BarContext, CompletionKind, Mode, ResolveError, analyze, display_path, resolve_detailed,
 };
+use crate::fileops::{ClipOp, Clipboard, UndoStack, parent_of};
 use crate::fs::{Entry, Fs};
 use crate::glob::Glob;
-use crate::names::validate_name;
 use crate::path::fold_cmp;
+
+mod ops;
+mod select;
 
 /// A text selection in the bar, in characters. `anchor == caret` is just a caret.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,12 +77,30 @@ pub enum Key {
     Back,
     /// History forward (Alt+Right).
     Forward,
+    /// Shift+Up / Shift+Down: grow the selection.
+    ExtendUp,
+    ExtendDown,
+    /// Ctrl+A in the list: select everything shown.
+    SelectAll,
+    /// Del in the list: move the selection to the trash.
+    Delete,
+    /// Ctrl+C / Ctrl+X / Ctrl+V in the list (in the bar they edit text instead).
+    Copy,
+    Cut,
+    Paste,
+    /// Ctrl+Z / Ctrl+Y in the list.
+    Undo,
+    Redo,
+    /// Backspace in the list: up one folder.
+    ParentFolder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
     Info,
     Good,
+    /// Needs attention but is not an error: a partial success, or a question awaiting an answer.
+    Warn,
     Bad,
 }
 
@@ -117,7 +139,15 @@ pub struct Bar {
     rows: Vec<u32>,
     view_key: Option<ViewKey>,
     hl_row: Option<usize>,
+    /// The cursor row, and the set of selected rows (multi-select).
     selected: Option<usize>,
+    selection: BTreeSet<usize>,
+    anchor: Option<usize>,
+
+    clip: Option<Clipboard>,
+    undo: UndoStack,
+    pending: Option<ops::Pending>,
+    log: Vec<String>,
 
     status: (String, Tone),
     errors: u32,
@@ -164,6 +194,12 @@ impl Bar {
             view_key: None,
             hl_row: None,
             selected: None,
+            selection: BTreeSet::new(),
+            anchor: None,
+            clip: None,
+            undo: UndoStack::default(),
+            pending: None,
+            log: Vec::new(),
             status: (String::new(), Tone::Info),
             errors: 0,
             sel_request: None,
@@ -253,10 +289,6 @@ impl Bar {
         self.selected.map(|r| self.row(r).name.as_str())
     }
 
-    pub fn select_row(&mut self, row: Option<usize>) {
-        self.selected = row.filter(|r| *r < self.rows.len());
-    }
-
     pub fn status(&self) -> (&str, Tone) {
         (&self.status.0, self.status.1)
     }
@@ -340,6 +372,7 @@ impl Bar {
         self.text = text;
         // Whatever was selected (the ghost) has been replaced or removed by this edit.
         self.ghost_chars = 0;
+        self.pending = None; // typing is not an answer to "delete permanently?"
         self.reanalyze();
         if kind == EditKind::Insert && !self.composing && caret == self.char_len() {
             self.offer_ghost();
@@ -370,10 +403,30 @@ impl Bar {
     pub fn key(&mut self, key: Key) {
         match key {
             Key::Tab if !self.composing => self.accept(),
-            Key::Enter if !self.composing => self.submit(),
-            Key::Escape => self.escape(),
-            Key::Up => self.move_selection(-1),
-            Key::Down => self.move_selection(1),
+            Key::Enter if !self.composing => {
+                if self.pending.is_some() {
+                    self.confirm();
+                } else {
+                    self.submit();
+                }
+            }
+            Key::Escape => {
+                if !self.cancel_pending() {
+                    self.escape();
+                }
+            }
+            Key::Up => self.move_selection(-1, false),
+            Key::Down => self.move_selection(1, false),
+            Key::ExtendUp => self.move_selection(-1, true),
+            Key::ExtendDown => self.move_selection(1, true),
+            Key::SelectAll => self.select_all_shown(),
+            Key::Delete => self.remove_selected(false),
+            Key::Copy => self.set_clipboard(ClipOp::Copy),
+            Key::Cut => self.set_clipboard(ClipOp::Cut),
+            Key::Paste => self.paste(),
+            Key::Undo => self.undo_last(),
+            Key::Redo => self.redo_last(),
+            Key::ParentFolder => self.go_up(),
             Key::Back => {
                 self.history_step(-1);
             }
@@ -432,7 +485,7 @@ impl Bar {
             self.sort_rows();
             self.view_dir = dir;
             self.view_key = Some(key);
-            self.selected = None;
+            self.clear_selection();
         }
         // Completion highlight: the entry Tab would go to (path completions, including the
         // path argument of `:cd`). Aliases and command words have no row to highlight.
@@ -513,7 +566,7 @@ impl Bar {
         self.ghost_chars = 0;
         self.analysed_for = None;
         self.reanalyze();
-        self.selected = None;
+        self.clear_selection();
         self.sel_request = Some(Sel { anchor: 0, caret: self.char_len() });
     }
 
@@ -549,8 +602,9 @@ impl Bar {
                 let dir = if dir.is_empty() { "/".to_string() } else { dir.to_string() };
                 let name = name.to_string();
                 self.navigate(dir);
-                self.selected = self.rows.iter().position(|&i| self.entries[i as usize].name == name);
-                self.scroll_request = self.selected;
+                let pos = self.rows.iter().position(|&i| self.entries[i as usize].name == name);
+                self.select_row(pos);
+                self.scroll_request = pos;
                 self.set_status(format!("Selected {name}"), Tone::Good);
             }
             Err(ResolveError::NoSuchPath) => self.error(format!("No such path: {}", input.trim())),
@@ -600,14 +654,34 @@ impl Bar {
 
     /// Finish a successful command: back to the idle bar, with a confirmation.
     fn done(&mut self, msg: String) {
-        self.go_idle();
+        self.finish_line();
         self.set_status(msg, Tone::Good);
+    }
+
+    /// Reset the bar to the idle current-folder text, unless it already is (so a key such as
+    /// Ctrl+C in the list keeps the selection it acted on).
+    fn finish_line(&mut self) {
+        if !(self.ghost_chars == 0 && self.typed() == self.display_cwd()) {
+            self.go_idle();
+        }
+    }
+
+    /// Backspace in the list: up one folder.
+    fn go_up(&mut self) {
+        let parent = parent_of(&self.cwd).to_string();
+        if parent == self.cwd {
+            self.set_status("Already at the top", Tone::Info);
+            return;
+        }
+        self.navigate(parent);
+        let shown = self.display_cwd();
+        self.set_status(format!("Now in {shown}"), Tone::Good);
     }
 
     /// Finish a command that did nothing wrong but nothing either: idle bar, neutral message.
     /// (Only errors keep the command text, so it can be fixed.)
     fn info(&mut self, msg: String) {
-        self.go_idle();
+        self.finish_line();
         self.set_status(msg, Tone::Info);
     }
 
@@ -652,21 +726,17 @@ impl Bar {
                 }
             }
             Command::Help => self.done(HELP.to_string()),
-            Command::Mkdir(name) | Command::Touch(name) | Command::Rename(name) => {
-                // The name is checked now; the file operation itself comes with the Windows shell.
-                match validate_name(&name, self.fs.name_rules()) {
-                    Ok(()) => self.info("File operations are not implemented yet".to_string()),
-                    Err(e) => self.error(e.to_string()),
-                }
-            }
-            Command::Rm { .. }
-            | Command::Copy
-            | Command::Cut
-            | Command::Paste
-            | Command::Open
-            | Command::Undo
-            | Command::Redo
-            | Command::Log => self.info("File operations are not implemented yet".to_string()),
+            Command::Mkdir(name) => self.make(&name, true),
+            Command::Touch(name) => self.make(&name, false),
+            Command::Rename(name) => self.rename_selected(&name),
+            Command::Rm { permanent } => self.remove_selected(permanent),
+            Command::Copy => self.set_clipboard(ClipOp::Copy),
+            Command::Cut => self.set_clipboard(ClipOp::Cut),
+            Command::Paste => self.paste(),
+            Command::Undo => self.undo_last(),
+            Command::Redo => self.redo_last(),
+            Command::Open => self.info("Opening files comes with the Windows shell".to_string()),
+            Command::Log => self.show_log(),
         }
     }
 
@@ -696,20 +766,6 @@ impl Bar {
         } else {
             self.blur_request = true;
         }
-    }
-
-    fn move_selection(&mut self, dir: i32) {
-        let n = self.rows.len();
-        if n == 0 {
-            return;
-        }
-        let next = match (self.selected, dir) {
-            (None, d) if d > 0 => 0,
-            (None, _) => n - 1,
-            (Some(i), d) => ((i as i64 + i64::from(d)).rem_euclid(n as i64)) as usize,
-        };
-        self.selected = Some(next);
-        self.scroll_request = Some(next);
     }
 }
 

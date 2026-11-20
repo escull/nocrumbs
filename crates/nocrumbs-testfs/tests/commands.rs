@@ -402,19 +402,18 @@ fn file_commands_validate_names_by_platform() {
         assert!(status(&s).0.contains(expect), "{line}: {}", status(&s).0);
     }
     run(&mut s, ":mkdir my folder");
-    assert_eq!(status(&s), ("File operations are not implemented yet".into(), Tone::Info), "a valid name passes");
-    run(&mut s, "\u{0}");
+    assert_eq!(status(&s), ("Created folder my folder".into(), Tone::Good), "a valid name passes");
     run(&mut s, ":mkdir \"quoted name\"");
-    assert_eq!(status(&s).1, Tone::Info);
+    assert_eq!(status(&s), ("Created folder quoted name".into(), Tone::Good));
 }
 
 #[test]
 fn unix_rules_allow_what_windows_forbids() {
     let mut s = session_on(MemFs::sample(false, 10), &[]);
     run(&mut s, ":mkdir a:b");
-    assert_eq!(status(&s).1, Tone::Info, "legal on Linux");
+    assert_eq!(status(&s).1, Tone::Good, "legal on Linux");
     run(&mut s, ":mkdir con");
-    assert_eq!(status(&s).1, Tone::Info);
+    assert_eq!(status(&s).1, Tone::Good);
     run(&mut s, ":mkdir a/b");
     assert_eq!(status(&s).1, Tone::Bad, "never legal");
 }

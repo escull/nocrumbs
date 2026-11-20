@@ -14,6 +14,7 @@ mod alias;
 mod bar;
 mod command;
 mod complete;
+mod fileops;
 mod fs;
 mod glob;
 mod names;
@@ -27,7 +28,8 @@ pub use complete::{
     AliasUse, Analysis, BarContext, Completion, CompletionKind, Mode, ResolveError, Resolved, analyze, display_path,
     resolve, resolve_detailed,
 };
-pub use fs::{Entry, Fs};
+pub use fileops::{ClipItem, ClipOp, Clipboard, UndoStack, split_ext, unique_name};
+pub use fs::{Entry, Fs, FsError, TrashToken};
 pub use glob::Glob;
 pub use names::{AliasNameError, NameError, NameRules, validate_alias_name, validate_name};
 pub use path::{fold_cmp, is_sep};

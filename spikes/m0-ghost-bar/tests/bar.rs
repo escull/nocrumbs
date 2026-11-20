@@ -288,3 +288,47 @@ fn commands_run_and_alt_arrows_walk_the_history() {
     assert_eq!(u.app().status_text(), "Sorted by size, descending");
     assert_eq!(u.app().text(), "~/projects/nocrumbs", "a finished command returns to the idle bar");
 }
+
+#[test]
+fn list_keys_work_once_the_bar_has_given_up_focus() {
+    let mut u = Ui::new(1_000);
+    u.key(Key::Escape); // idle bar: the first Esc blurs it
+    assert!(!u.focused());
+    let before = u.app().shown_rows();
+
+    u.key(Key::ArrowDown);
+    u.h.key_press_modifiers(egui::Modifiers::SHIFT, Key::ArrowDown);
+    u.h.run_steps(2);
+    assert_eq!(u.app().bar().selection_len(), 2, "Shift+Down extends the selection");
+
+    u.key(Key::Delete);
+    assert_eq!(u.app().shown_rows(), before - 2, "Del moves the selection to the trash");
+    u.h.key_press_modifiers(egui::Modifiers::COMMAND, Key::Z);
+    u.h.run_steps(2);
+    assert_eq!(u.app().shown_rows(), before, "Ctrl+Z restores it");
+
+    u.h.key_press_modifiers(egui::Modifiers::COMMAND, Key::A);
+    u.h.run_steps(2);
+    assert_eq!(u.app().bar().selection_len(), before, "Ctrl+A selects everything shown");
+    u.h.event(Event::Copy);
+    u.h.run_steps(2);
+    assert_eq!(u.app().bar().clipboard_summary().as_deref(), Some("Copied 8 items"));
+
+    u.key(Key::Backspace);
+    assert_eq!(u.app().cwd(), "/home", "Backspace goes up one folder");
+    u.h.event(Event::Text("/".into()));
+    u.h.run_steps(2);
+    assert!(u.focused(), "/ gives the bar focus back");
+}
+
+#[test]
+fn while_the_bar_has_focus_ctrl_keys_edit_text_not_files() {
+    let mut u = Ui::new(1_000);
+    let before = u.app().shown_rows();
+    u.type_str("x");
+    u.key(Key::Delete); // deletes text, never a file
+    u.h.key_press_modifiers(egui::Modifiers::COMMAND, Key::A);
+    u.h.run_steps(2);
+    assert_eq!(u.app().bar().selection_len(), 0);
+    assert_eq!(u.app().shown_rows(), before);
+}

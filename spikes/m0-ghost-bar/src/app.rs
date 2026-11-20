@@ -172,7 +172,7 @@ impl App {
             self.bar_row(ui, &ctx);
             ui.add_space(4.0);
             ui.label(
-                RichText::new("Tab complete · Enter go · Up/Down select · Alt+Left/Right history · Esc: ghost, then revert, then blur · / or Ctrl+L focus the bar")
+                RichText::new("Tab complete · Enter go · Up/Down select · Esc x3 blur the bar, then Del, Ctrl+C/X/V/Z/A work on the list · / refocus")
                     .small()
                     .weak(),
             );
@@ -198,19 +198,27 @@ impl App {
 
         // Read this frame's input before the TextEdit consumes it.
         let events = ctx.input(|i| i.events.clone());
+        // Keys for the bar while it has focus; keys for the list (file operations) when it does
+        // not. In the bar, Ctrl+C/V/Z/A edit text, as in any text field.
         let mut keys: Vec<BarKey> = Vec::new();
-        let (mut deleted, mut refocus) = (false, false);
+        let mut list_keys: Vec<BarKey> = Vec::new();
+        let (mut deleted, mut refocus, mut deselect) = (false, false, false);
         for ev in &events {
             match ev {
                 Event::Ime(ImeEvent::Preedit { text, .. }) => self.bar.set_composing(!text.is_empty()),
                 Event::Ime(ImeEvent::Commit(_)) => self.bar.set_composing(false),
+                Event::Copy if !focused => list_keys.push(BarKey::Copy),
+                Event::Cut if !focused => list_keys.push(BarKey::Cut),
                 Event::Cut => deleted = true,
+                Event::Paste(_) if !focused => list_keys.push(BarKey::Paste),
                 Event::Text(t) if t == "/" && !focused => refocus = true,
-                Event::Key { key, pressed: true, modifiers, .. } => match key {
+                Event::Key { key, pressed: true, modifiers, .. } if focused => match key {
                     Key::Backspace | Key::Delete => deleted = true,
                     Key::Tab if !modifiers.shift => keys.push(BarKey::Tab),
                     Key::Escape => keys.push(BarKey::Escape),
                     Key::Enter => keys.push(BarKey::Enter),
+                    Key::ArrowUp if modifiers.shift => keys.push(BarKey::ExtendUp),
+                    Key::ArrowDown if modifiers.shift => keys.push(BarKey::ExtendDown),
                     Key::ArrowUp => keys.push(BarKey::Up),
                     Key::ArrowDown => keys.push(BarKey::Down),
                     Key::ArrowLeft if modifiers.alt => keys.push(BarKey::Back),
@@ -218,14 +226,34 @@ impl App {
                     Key::L if modifiers.command => refocus = true,
                     _ => {}
                 },
+                Event::Key { key, pressed: true, modifiers, .. } => match key {
+                    Key::Delete => list_keys.push(BarKey::Delete),
+                    Key::Backspace => list_keys.push(BarKey::ParentFolder),
+                    Key::ArrowUp if modifiers.shift => list_keys.push(BarKey::ExtendUp),
+                    Key::ArrowDown if modifiers.shift => list_keys.push(BarKey::ExtendDown),
+                    Key::ArrowUp => list_keys.push(BarKey::Up),
+                    Key::ArrowDown => list_keys.push(BarKey::Down),
+                    Key::ArrowLeft if modifiers.alt => list_keys.push(BarKey::Back),
+                    Key::ArrowRight if modifiers.alt => list_keys.push(BarKey::Forward),
+                    Key::A if modifiers.command => list_keys.push(BarKey::SelectAll),
+                    Key::Z if modifiers.command && modifiers.shift => list_keys.push(BarKey::Redo),
+                    Key::Z if modifiers.command => list_keys.push(BarKey::Undo),
+                    Key::Y if modifiers.command => list_keys.push(BarKey::Redo),
+                    Key::Escape => deselect = true,
+                    Key::L if modifiers.command => refocus = true,
+                    _ => {}
+                },
                 _ => {}
             }
         }
-        // Alt+Left/Right are history, not caret movement: keep them from the TextEdit.
-        for k in &keys {
+        // Alt+Left/Right are history and Shift+Up/Down extend the selection, not caret movement:
+        // keep them from the TextEdit.
+        for k in keys.iter().chain(&list_keys) {
             match k {
                 BarKey::Back => ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, Key::ArrowLeft)),
                 BarKey::Forward => ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, Key::ArrowRight)),
+                BarKey::ExtendUp => ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, Key::ArrowUp)),
+                BarKey::ExtendDown => ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, Key::ArrowDown)),
                 _ => false,
             };
         }
@@ -236,6 +264,13 @@ impl App {
         if focused {
             for k in keys {
                 self.bar.key(k);
+            }
+        } else {
+            for k in list_keys {
+                self.bar.key(k);
+            }
+            if deselect {
+                self.bar.clear_selection();
             }
         }
         if self.bar.error_count() != self.seen_errors {
@@ -315,10 +350,17 @@ impl App {
             // The current path is always visible, even while the bar holds a filter.
             ui.label(RichText::new(self.bar.view_dir_display()).monospace().strong());
             ui.label(format!("· {} of {} shown", self.bar.row_count(), self.bar.entry_count()));
+            if self.bar.selection_len() > 1 {
+                ui.label(format!("· {} selected", self.bar.selection_len()));
+            }
+            if let Some(clip) = self.bar.clipboard_summary() {
+                ui.label(RichText::new(format!("[{clip}]")).strong().color(ACCENT));
+            }
             let (msg, tone) = self.bar.status();
             let color = match tone {
                 Tone::Info => ui.visuals().weak_text_color(),
                 Tone::Good => Color32::from_rgb(0x4a, 0xd2, 0x95),
+                Tone::Warn => Color32::from_rgb(0xfe, 0xbc, 0x2e),
                 Tone::Bad => Color32::from_rgb(0xff, 0x5d, 0x5d),
             };
             if !msg.is_empty() {
@@ -352,9 +394,9 @@ impl App {
             table = table.scroll_to_row(row, Some(Align::Center));
         }
         let bar = &self.bar;
-        let (selected, hl) = (bar.selected_row(), bar.highlighted_row());
+        let hl = bar.highlighted_row();
         let sort = bar.sort();
-        let mut clicked = None;
+        let mut clicked: Option<(usize, bool, bool)> = None;
         let mut header_clicked = None;
         table
             .header(ROW_H, |mut h| {
@@ -383,7 +425,7 @@ impl App {
                 body.rows(ROW_H, bar.row_count(), |mut row| {
                     let r = row.index();
                     let e = bar.row(r);
-                    row.set_selected(selected == Some(r));
+                    row.set_selected(bar.is_selected(r));
                     let is_hl = hl == Some(r);
                     let paint_hl = |ui: &mut egui::Ui| {
                         if is_hl {
@@ -409,13 +451,15 @@ impl App {
                         paint_hl(ui);
                         ui.label(RichText::new(format::kind(&e.name, e.is_dir)).weak());
                     });
-                    if row.response().clicked() {
-                        clicked = Some(r);
+                    let resp = row.response();
+                    if resp.clicked() {
+                        let m = resp.ctx.input(|i| i.modifiers);
+                        clicked = Some((r, m.command, m.shift));
                     }
                 });
             });
-        if clicked.is_some() {
-            self.bar.select_row(clicked);
+        if let Some((row, ctrl, shift)) = clicked {
+            self.bar.click_row(row, ctrl, shift);
         }
         if let Some(key) = header_clicked {
             self.bar.sort_by_column(key);

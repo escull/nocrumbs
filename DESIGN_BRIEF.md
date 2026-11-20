@@ -164,8 +164,21 @@ Enter opens the selected row (folder → navigate; file → OS default handler v
 - Paste into a folder with a name collision auto-renames to `name (2)`. Cut+paste = move (same-volume rename, cross-volume copy-then-delete only after the copy verifies).
 - **Guards:** pasting/moving a folder into itself or one of its descendants is rejected with a clear message. Renaming a cut/copied item updates the clipboard reference or invalidates it explicitly — it must never silently duplicate.
 
+- **Pasting details (settled in the core):** a colliding name becomes `name (2)`, `name (3)`, ... *before the extension*
+  for files (`notes (2).md`) and after the whole name for folders (`Documents (2)`). Cutting something into the folder it is
+  already in does nothing ("Already in this folder"). A successful cut is used up; items that fail stay on the clipboard;
+  a copy can be pasted again. A source that has since been deleted is reported ("... no longer exists"), never resurrected.
+  Pasted items are selected afterwards. `:mkdir` and `:touch` always act on the current folder, whatever is selected.
+  `:rename` checks the new name before it checks the selection, and needs exactly one selected entry.
+- **`:rm!` asks first:** the status line says what will be deleted and that it cannot be undone; Enter confirms, Esc cancels,
+  and typing anything else withdraws the question.
+
 ### 9.5 Undo
 Delete (to Recycle Bin), rename, move, copy-paste, and create are undoable via `Ctrl+Z`/`:undo` (stack depth ≥ 20, cleared on exit; permanent deletes are not undoable and always confirm). Every operation is logged to the status bar and to an in-memory operation log viewable with `:log`.
+
+Undo never deletes anything for good: undoing a create or a paste moves the created item to the trash, and redo restores it.
+One undo reverses a whole multi-item action (a paste of three items is one step). If the world has changed underneath an
+undo (the item is already gone), it says so, leaves the step undoable, and never half-applies silently.
 
 ### 9.6 Long operations
 Copies/moves/deletes run on a worker thread, show progress + cancel in the status line, and never block navigation or typing. Failures (permission denied, file in use, path too long) are reported per item with a retry/skip choice; Windows long paths (`\\?\`) are supported.

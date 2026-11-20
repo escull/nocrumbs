@@ -25,7 +25,7 @@ Backspace on ghost text, Esc three times, Up/Down.
 | Crate | Role |
 |---|---|
 | `crates/nocrumbs-core` | UI-free: `Bar` (the whole bar state machine), `analyze()`/`resolve()` (command > glob > alias > path), the `:command` parser, name validation, aliases, `Glob`, the `Fs` trait, and `sim::Session` (a simulated text field for tests) |
-| `crates/nocrumbs-testfs` | In-memory `Fs` with a deterministic 100k-entry folder; 14 completion cases and 34 keystroke scripts that run headless in the core |
+| `crates/nocrumbs-testfs` | In-memory `Fs` (full write side, folder subtrees, trash) with a deterministic 100k-entry folder; completion cases, 106 keystroke scripts and 12 filesystem tests that run headless in the core |
 | `spikes/m0-ghost-bar` | egui/eframe front end (a thin renderer over `Bar`) and 14 headless tests that drive the real widget |
 
 The split: egui's `TextEdit` still does the text editing (caret, mouse, clipboard, IME). The front
@@ -34,8 +34,9 @@ end reports `edited(text, caret, kind)`, the field's selection each frame, and t
 blur. `sim::Session` plays the front end's part in tests, so behaviour is specified once, in the
 core, and the UI tests only prove the egui widget forwards events faithfully.
 
-File operations (`:mkdir`, `:rm`, clipboard, undo), persistence and the real filesystem are **not** in
-the spike; aliases, `:cd`, `:sort`, `:hidden` and history are.
+Persistence and the real filesystem are **not** in the spike. Aliases, `:cd`, `:sort`, `:hidden`, history and, as of the
+file-operations step, `:mkdir`/`:touch`/`:rename`/`:rm`/`:rm!`/`:copy`/`:cut`/`:paste`/`:undo`/`:redo` on the in-memory
+filesystem are. In the window, press Esc to blur the bar, then Del, Backspace, Ctrl+C/X/V/Z/A and Shift+arrows act on the list.
 
 ## Findings
 
