@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OneBar — address-bar file explorer</title>
+<style>
+  :root{
+    --bg:#14141a; --panel:#1c1c24; --panel2:#212129; --border:#2d2d38;
+    --text:#eaeaf0; --dim:#9494a4; --accent:#6d4aff; --accent-soft:rgba(109,74,255,.16);
+    --err:#ff5d5d; --ok:#4ad295; --warn:#febc2e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg); color:var(--text);
+    font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex; justify-content:center; align-items:center; padding:20px;
+  }
+  #win{
+    width:min(960px,100%); height:min(660px,100%);
+    display:flex; flex-direction:column;
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  #chrome{
+    display:flex; align-items:center; gap:8px;
+    padding:9px 14px; border-bottom:1px solid var(--border); background:var(--panel2);
+    user-select:none;
+  }
+  #chrome .dot{width:11px;height:11px;border-radius:50%;}
+  #chrome .dot:nth-child(1){background:#ff5f57;}
+  #chrome .dot:nth-child(2){background:#febc2e;}
+  #chrome .dot:nth-child(3){background:#28c840;}
+  #chrome .title{margin-left:6px;color:var(--dim);font-size:12.5px;letter-spacing:.4px;}
+  #barwrap{padding:12px 14px 8px;border-bottom:1px solid var(--border);background:var(--panel);}
+  #barrow{position:relative;}
+  #addr{
+    width:100%; background:#101016; border:1px solid var(--border); border-radius:8px;
+    color:var(--text); font:13.5px/1 "SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    padding:10px 12px; outline:none; caret-color:var(--accent); transition:border-color .15s, box-shadow .15s;
+  }
+  #addr:focus{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
+  #addr.shake{animation:shake .3s;}
+  @keyframes shake{25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+  #modechip{
+    display:none; position:absolute; top:-7px; right:10px;
+    background:var(--accent); color:#fff; font-size:10.5px; font-weight:700;
+    letter-spacing:.8px; padding:2px 8px; border-radius:99px; text-transform:uppercase;
+  }
+  #modechip.on{display:inline-block;}
+  #modechip.filter{background:var(--warn); color:#181818;}
+  #hint{margin-top:7px;font-size:11.5px;color:var(--dim);line-height:1.7;}
+  #hint kbd{
+    background:#101016;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;
+    padding:1px 5px;font:11px ui-monospace,Menlo,monospace;color:var(--text);
+  }
+  #view{flex:1;overflow-y:auto;}
+  table{width:100%;border-collapse:collapse;}
+  thead th{
+    position:sticky;top:0;background:var(--panel2);color:var(--dim);
+    font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;
+    text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;z-index:5;
+  }
+  thead th:hover{color:var(--text);}
+  thead th .arrow{color:var(--accent);margin-left:4px;}
+  tbody td{padding:7px 12px;border-bottom:1px solid #232330;font-size:13.5px;}
+  tbody tr{cursor:default;}
+  tbody tr:hover{background:#22222c;}
+  tbody tr.hl{background:var(--accent-soft);outline:1px solid rgba(109,74,255,.35);outline-offset:-1px;}
+  tbody tr.parent td{color:var(--dim);}
+  td.name{font-weight:500;}
+  tr.dir td.name{color:#bcaaff;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim);white-space:nowrap;}
+  td.date{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums;}
+  td.kind{color:var(--dim);font-size:12.5px;}
+  td.icon{width:22px;color:var(--dim);text-align:center;}
+  tr.dir td.icon{color:var(--accent);}
+  .empty{padding:26px;text-align:center;color:var(--dim);font-style:italic;}
+  #status{
+    padding:7px 14px;border-top:1px solid var(--border);background:var(--panel2);
+    font-size:12px;color:var(--dim);min-height:31px;display:flex;align-items:center;gap:8px;
+  }
+  #status.good{color:var(--ok);}
+  #status.bad{color:var(--err);}
+  .clipchip{
+    margin-left:auto;font-size:11px;background:#101016;border:1px solid var(--border);
+    border-radius:99px;padding:1px 9px;color:var(--warn);
+  }
+  input.rename{
+    background:#101016;border:1px solid var(--accent);border-radius:4px;
+    color:var(--text);font:inherit;padding:1px 6px;width:100%;outline:none;
+  }
+  ::-webkit-scrollbar{width:10px;}
+  ::-webkit-scrollbar-thumb{background:#33333f;border-radius:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+</style>
+</head>
+<body>
+<div id="win">
+  <div id="chrome">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <span class="title">OneBar — no crumbs, just the bar</span>
+  </div>
+
+  <div id="barwrap">
+    <div id="barrow">
+      <span id="modechip"></span>
+      <input id="addr" spellcheck="false" autocomplete="off"
+             placeholder="Type a path…  ~ · .. · *.pdf · proj · :sort size · :alias proj ~/projects · :help">
+    </div>
+    <div id="hint">
+      <kbd>Tab</kbd> complete in the bar &nbsp;·&nbsp; typing highlights the match in the list &nbsp;·&nbsp;
+      <kbd>Enter</kbd> navigate &nbsp;·&nbsp; <kbd>↑</kbd><kbd>↓</kbd> history / list &nbsp;·&nbsp;
+      <kbd>/</kbd> jump to bar<br>
+      <kbd>F2</kbd> rename &nbsp;·&nbsp; <kbd>Del</kbd> delete &nbsp;·&nbsp;
+      <kbd>Ctrl+C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copy/cut/paste &nbsp;·&nbsp;
+      <kbd>Backspace</kbd> up a folder &nbsp;·&nbsp; <kbd>Esc</kbd> cancel / clear filter
+    </div>
+  </div>
+
+  <div id="view">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:22px"></th>
+          <th data-sort="name">Name<span class="arrow" id="a-name"></span></th>
+          <th data-sort="size" style="width:110px;text-align:right">Size<span class="arrow" id="a-size"></span></th>
+          <th data-sort="date" style="width:150px">Modified<span class="arrow" id="a-date"></span></th>
+          <th style="width:130px">Kind</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" style="display:none">Nothing here.</div>
+  </div>
+
+  <div id="status"></div>
+</div>
+
+<script>
+/* ---------- mock filesystem ---------- */
+const D=(children,mtime)=>({type:'dir',mtime,children});
+const F=(size,mtime)=>({type:'file',size,mtime});
+
+const root=D({
+  home:D({
+    user:D({
+      Documents:D({
+        'tax-return-2025.pdf':F(284120,'2026-04-02 11:18'),
+        'resume.docx':F(46080,'2026-09-14 08:41'),
+        'quarterly-report.pdf':F(182340,'2026-10-30 16:02'),
+        recipes:D({'pancakes.md':F(1240,'2026-03-05 17:02'),'ramen.md':F(980,'2026-07-21 19:44')},'2026-07-21 19:44')
+      },'2026-10-30 16:02'),
+      Downloads:D({
+        'backup-2026-06.tar.gz':F(742391808,'2026-06-30 23:59'),
+        'wallpaper-purple.png':F(3824055,'2026-10-11 21:07'),
+        'lumo-2.0-notes.txt':F(2048,'2026-06-30 12:00'),
+        'invoice-nov.pdf':F(96512,'2026-11-02 10:12'),
+        'installer-v3.exe':F(52428800,'2026-11-05 09:20')
+      },'2026-11-05 09:20'),
+      Pictures:D({
+        screenshots:D({'shot-001.png':F(1240320,'2026-10-02 14:20'),'shot-002.png':F(1188760,'2026-10-09 16:35')},'2026-10-09 16:35'),
+        'holiday-2026 (1).jpg':F(3821055,'2026-08-02 12:00'),
+        'holiday-2026 (2).jpg':F(4188211,'2026-08-02 12:01'),
+        'lumo-icon.svg':F(18420,'2026-05-23 09:03')
+      },'2026-10-09 16:35'),
+      Music:D({},'2026-01-15 10:00'),
+      Videos:D({'demo-cut.mp4':F(2147483648,'2026-08-19 15:41')},'2026-08-19 15:41'),
+      projects:D({
+        onebar:D({'index.html':F(21400,'2026-11-17 20:15'),'main.js':F(8620,'2026-11-17 20:15'),'style.css':F(4310,'2026-11-17 20:15'),'NOTES.md':F(2210,'2026-11-18 07:58')},'2026-11-18 07:58'),
+        dotfiles:D({'.zshrc':F(2214,'2026-10-28 22:10'),'.gitignore':F(45,'2026-09-01 12:00'),'.vimrc':F(1580,'2026-08-14 11:11')},'2026-10-28 22:10'),
+        'README.md':F(512,'2026-11-01 18:27')
+      },'2026-11-18 07:58'),
+      '.config':D({
+        lumo:D({'memory.json':F(342,'2026-11-16 09:12')},'2026-11-16 09:12'),
+        'starship.toml':F(892,'2026-10-05 13:30')
+      },'2026-11-16 09:12'),
+      'notes.md':F(1420,'2026-11-17 22:41'),
+      'shopping-list.txt':F(320,'2026-11-18 07:40'),
+      '.zsh_history':F(9812,'2026-11-18 08:03')
+    },'2026-11-18 08:03')
+  },'2026-11-18 08:03'),
+  etc:D({
+    'hostname':F(13,'2026-01-01 00:00'),
+    'hosts':F(221,'2026-02-03 10:00'),
+    'nginx.conf':F(1024,'2026-04-19 14:45')
+  },'2026-04-19 14:45'),
+  var:D({
+    log:D({'system.log':F(248112,'2026-11-18 07:59'),'install.log':F(48210,'2026-03-12 02:10')},'2026-11-18 07:59'),
+    tmp:D({},'2026-11-18 06:00')
+  },'2026-11-18 07:59'),
+  usr:D({
+    bin:D({'bash':F(1183448,'2026-01-01 00:00'),'ls':F(142256,'2026-01-01 00:00')},'2026-01-01 00:00'),
+    share:D({man:D({})},'2026-01-01 00:00')
+  },'2026-01-01 00:00'),
+  tmp:D({},'2026-11-18 06:00')
+},'2026-11-18 08:03');
+
+/* ---------- state ---------- */
+const HOME='/home/user';
+let cwd=HOME;
+let sortKey='name', sortDir=1;
+let showHidden=false;
+let selIdx=-1;              // keyboard selection
+let hlIdx=-1;               // as-you-type highlight from the bar
+let rows=[];
+let hist=[], histPtr=-1;
+let activeGlob=null;         // live filter pattern
+let compl=null;              // {dirPath, name, isDir, fullText} current inline completion
+let aliases={ dl:'/home/user/Downloads', proj:'/home/user/projects', pics:'~/Pictures' };
+let clip=null;               // {op:'copy'|'cut', name, node, fromPath}
+let renaming=null;           // {rowIdx, oldName, input}
+
+const $=id=>document.getElementById(id);
+const addr=$('addr'), tbody=$('rows'), statusEl=$('status'), chip=$('modechip');
+
+/* ---------- path helpers ---------- */
+function norm(parts){
+  const out=[];
+  for(const s of parts){
+    if(s===''||s==='.')continue;
+    if(s==='..'){out.pop();continue;}
+    out.push(s);
+  }
+  return out;
+}
+function expandTilde(p){
+  if(p==='~')return HOME;
+  if(p.startsWith('~/'))return HOME+p.slice(1);
+  return p;
+}
+function expandAlias(input){
+  // "proj" -> its target ; "proj/onebar" -> target + "/onebar"
+  let p=input.trim();
+  const slash=p.indexOf('/');
+  const head=slash<0?p:p.slice(0,slash);
+  const rest=slash<0?'':p.slice(slash);
+  const target=aliases[head];
+  if(target===undefined)return input;
+  return expandTilde(target)+rest;
+}
+function resolve(input){
+  let p=expandTilde(expandAlias(input)).trim().replace(/\/+$/,'');
+  if(p==='')p='/';
+  const parts=p.startsWith('/')
+    ? norm(p.split('/'))
+    : norm((cwd==='/'?[]:cwd.slice(1).split('/')).concat(p.split('/')));
+  let n=root;
+  for(const s of parts){
+    if(!n||n.type!=='dir')return null;
+    n=n.children[s];
+  }
+  return n?{path:'/'+parts.join('/'),node:n}:null;
+}
+function nodeAt(path){
+  let n=root;
+  for(const s of norm(path.split('/'))){
+    if(!n||n.type!=='dir')return null;
+    n=n.children[s];
+  }
+  return n||null;
+}
+const parentOf=p=>{const i=p.lastIndexOf('/');return i<=0?'/':p.slice(0,i);};
+const joinPath=(b,n)=>(b==='/'?'':b)+'/'+n;
+const disp=p=>p==='/'?'/':(p===HOME?'~':p.startsWith(HOME+'/')?'~'+p.slice(HOME.length):p);
+function nowStamp(){
+  const d=new Date(),z=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes());
+}
+
+/* ---------- formatting ---------- */
+function fmtSize(b){
+  if(b===undefined)return '—';
+  if(b<1024)return b+' B';
+  const u=['KB','MB','GB','TB'];let i=-1;
+  do{b/=1024;i++;}while(b>=1024&&i<u.length-1);
+  return b.toFixed(1)+' '+u[i];
+}
+function globToRegex(g){
+  return new RegExp('^'+g.replace(/[.+^${}()|[\]\\]/g,'\\$&').replace(/\*/g,'[^/]*').replace(/\?/g,'.')+'$','i');
+}
+function entries(node){
+  return Object.entries(node.children||{})
+    .map(([name,n])=>({name,node:n}))
+    .filter(e=>showHidden||!e.name.startsWith('.'));
+}
+function status(msg,tone){
+  statusEl.firstChild&&statusEl.childNodes.length===1?null:statusEl.replaceChildren(document.createTextNode(msg));
+  statusEl.className=tone||'';
+  if(clip)statusEl.classList.add('hasclip'),chipClip();
+}
+function chipClip(){
+  let c=statusEl.querySelector('.clipchip');
+  if(!clip){if(c)c.remove();return;}
+  if(!c){c=document.createElement('span');c.className='clipchip';statusEl.appendChild(c);}
+  c.textContent=(clip.op==='copy'?'📋 ':'✂️ ')+clip.name;
+}
+status(); // init empty call guard
+function setStatus(msg,tone){
+  statusEl.textContent=msg;
+  statusEl.className=tone||'';
+  chipClip();
+}
+
+/* ---------- sorting ---------- */
+function sorted(list){
+  const cmp={
+    name:(a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}),
+    size:(a,b)=>((a.node.size||0)-(b.node.size||0)),
+    date:(a,b)=>String(a.node.mtime||'').localeCompare(String(b.node.mtime||''))
+  };
+  list.sort((a,b)=>{
+    const ad=a.node?a.node.type==='dir':false, bd=b.node?b.node.type==='dir':false;
+    if(ad!==bd)return ad?-1:1;
+    return cmp[sortKey](a,b)*sortDir;
+  });
+  return list;
+}
+
+/* ---------- rendering ---------- */
+function paintRowStates(){
+  rows.forEach((r,i)=>{
+    r.el.classList.toggle('hl',i===selIdx||i===hlIdx);
+  });
+}
+function kindOf(e){
+  if(!e.node)return 'Parent folder';
+  if(e.node.type==='dir')return Object.keys(e.node.children||{}).length+' items';
+  const ext=(e.name.match(/\.([a-z0-9]+)$/i)||[])[1];
+  return ext?ext.toUpperCase()+' file':'File';
+}
+function visibleEntries(node){
+  let list=entries(node);
+  if(activeGlob){
+    const re=globToRegex(activeGlob);
+    list=list.filter(e=>re.test(e.name));
+  }
+  return list;
+}
+function render(){
+  const node=nodeAt(cwd);
+  if(!node||node.type!=='dir'){setStatus('Something went wrong reading '+cwd,'bad');return;}
+  tbody.innerHTML='';
+  rows=[];
+  renaming=null;
+  let list=[];
+  if(cwd!=='/'&&!activeGlob)list.push({name:'..',node:null});
+  list.push(...sorted(visibleEntries(node)));
+
+  $('empty').style.display=list.length?'none':'block';
+  $('empty').textContent=activeGlob?('No matches for '+activeGlob+'.'):'This folder is empty.';
+
+  list.forEach((e,i)=>{
+    const tr=document.createElement('tr');
+    if(!e.node)tr.className='parent';
+    else tr.className=e.node.type==='dir'?'dir':'file';
+    const icon=!e.node?'↰':(e.node.type==='dir'?'▸':'·');
+    tr.innerHTML=
+      '<td class="icon">'+icon+'</td>'+
+      '<td class="name">'+escapeHtml(e.name)+(e.node&&e.node.type==='dir'?'/':'')+'</td>'+
+      '<td class="num">'+(!e.node?'—':fmtSize(e.node.size))+'</td>'+
+      '<td class="date">'+(!e.node?'—':(e.node.mtime||'—'))+'</td>'+
+      '<td class="kind">'+kindOf(e)+'</td>';
+    tr.addEventListener('click',()=>{selIdx=i;hlIdx=-1;paintRowStates();});
+    tr.addEventListener('dblclick',()=>openEntry(e));
+    tbody.appendChild(tr);
+    rows.push({el:tr,entry:e,idx:i});
+  });
+
+  ['name','size','date'].forEach(k=>{
+    $('a-'+k).textContent=k===sortKey?(sortDir===1?'↑':'↓'):'';
+  });
+
+  const vis=visibleEntries(node);
+  let total=0;vis.forEach(e=>{if(e.node.type==='file')total+=e.node.size;});
+  const dirs=vis.filter(e=>e.node.type==='dir').length, files=vis.length-dirs;
+  let msg;
+  if(activeGlob){
+    msg='Filter '+activeGlob+': '+vis.length+' of '+entries(node).length+' shown · '+dirs+' folders, '+files+' files ('+fmtSize(total)+')';
+  }else{
+    msg=cwd+' · '+dirs+' folders, '+files+' files ('+fmtSize(total)+') · sorted by '+sortKey+(sortDir===1?' ↑':' ↓')+(showHidden?' · hidden shown':'');
+  }
+  setStatus(msg);
+  if(selIdx>=rows.length)selIdx=-1;
+  if(hlIdx>=rows.length)hlIdx=-1;
+  paintRowStates();
+}
+function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function openEntry(e){
+  if(!e.node){nav(parentOf(cwd));return;}
+  if(e.node.type==='dir'){nav(joinPath(cwd,e.name));return;}
+  setStatus('Opening '+e.name+' … (prototype — nothing actually launched)','good');
+}
+function nav(path){
+  cwd=path; selIdx=-1; hlIdx=-1; activeGlob=null; compl=null; setChip(null);
+  if(hist[hist.length-1]!==path)hist.push(path);
+  histPtr=-1;
+  addr.value=disp(cwd);
+  render();
+}
+function setChip(mode){ // null | 'filter' | 'cmd'
+  if(!mode){chip.className='';chip.textContent='';}
+  else if(mode==='filter'){chip.className='on filter';chip.textContent='filter';}
+  else if(mode==='cmd'){chip.className='on';chip.textContent='command';}
+  else if(mode==='alias'){chip.className='on';chip.textContent='alias';}
+}
+
+/* ---------- column sorting ---------- */
+document.querySelectorAll('th[data-sort]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const k=th.dataset.sort;
+    if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=1;}
+    render();
+  });
+});
+
+/* ---------- commands ---------- */
+const COMMANDS=[
+  ':sort name',':sort size',':sort date',':asc',':desc',':hidden',
+  ':mkdir NAME',':touch NAME',':rename NEWNAME',':rm',':copy',':cut',':paste',
+  ':alias NAME PATH',':unalias NAME',':cd PATH',':help'
+];
+function runCmd(t){
+  const parts=t.slice(1).trim().split(/\s+/).filter(Boolean);
+  const c=parts[0];
+  if(c==='sort'){
+    const map={name:'name',size:'size',date:'date',modified:'date'};
+    if(map[parts[1]]){sortKey=map[parts[1]];if(parts[2]==='desc')sortDir=-1;else if(parts[2]==='asc')sortDir=1;render();setStatus('Sorted by '+sortKey,'good');return true;}
+    setStatus(':sort needs name, size or date','bad');return false;
+  }
+  if(c==='asc'){sortDir=1;render();return true;}
+  if(c==='desc'){sortDir=-1;render();return true;}
+  if(c==='hidden'){showHidden=!showHidden;render();setStatus('Hidden files '+(showHidden?'shown':'hidden'));return true;}
+  if(c==='cd'){ if(parts[1]){return tryNav(parts.slice(1).join(' '));} setStatus(':cd needs a path','bad');return false; }
+  if(c==='mkdir'||c==='touch'){
+    if(!parts[1]){setStatus(':'+c+' needs a name','bad');return false;}
+    const n=nodeAt(cwd);
+    if(n.children[parts[1]]){setStatus(parts[1]+' already exists','bad');return false;}
+    n.children[parts[1]]=c==='mkdir'?D({},nowStamp()):F(0,nowStamp());
+    render();setStatus((c==='mkdir'?'Created folder ':'Created ')+parts[1],'good');return true;
+  }
+  if(c==='rename'||c==='mv'){
+    if(!parts[1]){setStatus(':rename needs a new name (renames the highlighted entry)','bad');return false;}
+    return renameSelection(parts[1]);
+  }
+  if(c==='rm'||c==='del'){
+    const idx=selIdx>=0?selIdx:hlIdx;
+    if(idx<0||!rows[idx].entry.node||rows[idx].entry.name==='..'){setStatus('Select an entry first','bad');return false;}
+    const name=rows[idx].entry.name;
+    delete nodeAt(cwd).children[name];
+    selIdx=-1;hlIdx=-1;render();setStatus('Deleted '+name+' (mock FS — nothing real touched)','good');return true;
+  }
+  if(c==='copy'||c==='cut'){
+    const idx=selIdx>=0?selIdx:hlIdx;
+    if(idx<0||!rows[idx].entry.node||rows[idx].entry.name==='..'){setStatus('Select an entry first','bad');return false;}
+    clip={op:c==='copy'?'copy':'cut',name:rows[idx].entry.name,node:rows[idx].entry.node,fromPath:cwd};
+    setStatus((c==='copy'?'Copied ':'Cut ')+clip.name+' — Ctrl+V or :paste to drop it somewhere','good');
+    chipClip();return true;
+  }
+  if(c==='paste'){
+    if(!clip){setStatus('Clipboard is empty — :copy or :cut something first','bad');return false;}
+    return doPaste();
+  }
+  if(c==='alias'){
+    if(!parts[1]||!parts[2]){setStatus('Usage: :alias NAME PATH','bad');return false;}
+    const r=resolve(parts.slice(2).join(' '));
+    if(!r||r.node.type!=='dir'){setStatus('Alias target is not a folder: '+parts.slice(2).join(' '),'bad');return false;}
+    aliases[parts[1]]=r.path;
+    setStatus('Alias "'+parts[1]+'" → '+r.path+'. Type '+parts[1]+' to jump there.','good');
+    return true;
+  }
+  if(c==='unalias'){
+    if(!parts[1]||!(parts[1] in aliases)){setStatus('No such alias: '+(parts[1]||''),'bad');return false;}
+    delete aliases[parts[1]];
+    setStatus('Removed alias '+parts[1],'good');return true;
+  }
+  if(c==='help'){
+    setStatus('Paths: ~ .. *.pdf proj · Aliases: :alias/:unalias · Sort: :sort name|size|date :asc :desc :hidden · Files: :mkdir :touch :rename :rm :copy :cut :paste :cd · :help');
+    return true;
+  }
+  setStatus('Unknown command: :'+(c||'')+' — try :help','bad');
+  return false;
+}
+function doPaste(){
+  const dst=nodeAt(cwd);
+  let name=clip.name;
+  if(dst.children[name]){
+    if(clip.op==='cut'&&clip.fromPath===cwd){setStatus(name+' is already here','bad');return false;}
+    const m=name.match(/^(.*?)(\.[^.]+)?$/);
+    let i=2;while(dst.children[m[1]+' ('+i+')'+(m[2]||'')])i++;
+    name=m[1]+' ('+i+')'+(m[2]||'');
+  }
+  dst.children[name]=JSON.parse(JSON.stringify(clip.node));
+  if(clip.op==='cut'){
+    if(clip.fromPath!==cwd)delete nodeAt(clip.fromPath).children[clip.name];
+    else{delete dst.children[clip.name];/* moved */}
+    clip=null;chipClip();
+  }
+  render();setStatus('Pasted '+name,'good');return true;
+}
+function renameSelection(newName){
+  const idx=selIdx>=0?selIdx:hlIdx;
+  if(idx<0||!rows[idx].entry.node||rows[idx].entry.name==='..'){setStatus('Select an entry first','bad');return false;}
+  const old=rows[idx].entry.name, n=nodeAt(cwd);
+  if(newName===old)return true;
+  if(n.children[newName]){setStatus('"'+newName+'" already exists here','bad');return false;}
+  const kids=n.children;
+  kids[newName]=kids[old];
+  delete kids[old];
+  if(clip&&clip.name===old)clip.name=newName;
+  render();setStatus('Renamed '+old+' → '+newName,'good');return true;
+}
+
+/* ---------- inline completion (no dropdown) ---------- */
+function completeFromInput(){
+  const raw=addr.value;
+  const caret=addr.selectionStart;
+  // only complete if caret is at the end and there's no active selection drag beyond typed part
+  compl=null; hlIdx=-1;
+  if(!raw||caret!==raw.length||addr.selectionStart!==addr.selectionEnd){
+    // user has a selection (our offered completion) — still track it
+    if(raw&&addr.selectionEnd===raw.length&&addr.selectionStart<raw.length){
+      // this IS our offered completion state; keep tracking below with typedPart
+    } else {
+      paintRowStates();return;
+    }
+  }
+  const t=raw;
+  if(t.startsWith(':')){
+    setChip('cmd');
+    const q=t.toLowerCase();
+    const match=COMMANDS.find(c=>c.toLowerCase().startsWith(q))||COMMANDS.find(c=>c.toLowerCase().split(' ')[0].startsWith(q.split(' ')[0]));
+    if(match&&match.length>t.length){
+      addr.value=match;
+      addr.setSelectionRange(t.length,match.length);
+    }
+    paintRowStates();return;
+  }
+  // glob filter mode
+  if(/[*?]/.test(t)){
+    setChip('filter');
+    const seg=t.split('/').pop();
+    if(/[*?]/.test(seg)){
+      activeGlob=seg;
+      render();
+      // highlight first match in list
+      if(rows.length&&(cwd!=='/'||true)){}
+    }else{activeGlob=null;setChip(null);render();}
+    return;
+  }
+  setChip(aliases[t.trim()]?'alias':null);
+  activeGlob=null;
+
+  // path completion: walk existing segments, complete the last partial one
+  const ex=expandTilde(expandAlias(t));
+  const abs=ex.startsWith('/');
+  const segsRaw=ex.split('/');
+  // determine deepest existing ancestor and the partial tail
+  let walked=abs?[]:(cwd==='/'?[]:cwd.slice(1).split('/'));
+  let partial='';
+  let done=false;
+  for(let i=abs?1:0;i<segsRaw.length;i++){
+    const s=segsRaw[i];
+    if(s===''){continue;}
+    if(s==='..'||s==='.'){walked=norm(walked.concat([s]));continue;}
+    const cur=nodeAt('/'+norm(walked).join('/'));
+    if(cur&&cur.type==='dir'&&cur.children[s]){walked.push(s);}
+    else{partial=s;done=true;/* only treat as partial if it's the last seg */ 
+      if(i!==segsRaw.length-1){partial='';}
+      break;}
+  }
+  if(partial===''){paintRowStates();return;}
+  const dirPath='/'+norm(walked).join('/');
+  const dirNode=nodeAt(dirPath);
+  if(!dirNode||dirNode.type!=='dir'){paintRowStates();return;}
+  const lower=partial.toLowerCase();
+  const cands=entries(dirNode).filter(e=>e.name.toLowerCase().startsWith(lower));
+  if(!cands.length){paintRowStates();return;}
+  cands.sort((a,b)=>a.name.localeCompare(b.name));
+  const best=cands[0];
+  const isDir=best.node.type==='dir';
+  const completed=t+best.name.slice(partial.length)+(isDir?'/':'');
+  if(completed.length>t.length){
+    addr.value=completed;
+    addr.setSelectionRange(t.length,completed.length);
+  }
+  compl={dirPath,name:best.name,isDir,fullText:t+best.name.slice(partial.length)};
+  // highlight the match row if we're completing inside the current folder
+  if(dirPath===cwd){
+    const i=rows.findIndex(r=>r.entry.node&&r.entry.name===best.name);
+    if(i>=0)hlIdx=i;
+  }
+  paintRowStates();
+}
+
+/* ---------- address bar events ---------- */
+function tryNav(input){
+  const t=input.trim();
+  if(t===''){addr.value=disp(cwd);return true;}
+  const r=resolve(t);
+  if(!r){
+    addr.classList.remove('shake');void addr.offsetWidth;addr.classList.add('shake');
+    setStatus('No such path: '+t,'bad');
+    return false;
+  }
+  if(r.node.type==='file'){
+    nav(parentOf(r.path));
+    const i=rows.findIndex(x=>x.entry.name===r.path.slice(r.path.lastIndexOf('/')+1));
+    if(i>=0){selIdx=i;paintRowStates();}
+    setStatus('Selected '+r.path.slice(r.path.lastIndexOf('/')+1),'good');
+    return true;
+  }
+  nav(r.path);
+  setStatus('→ '+r.path,'good');
+  return true;
+}
+function submitBar(){
+  const t=addr.value.trim();
+  if(t===''){addr.value=disp(cwd);return;}
+  if(t.startsWith(':')){
+    if(runCmd(t))addr.value=disp(cwd);
+    setChip(null);
+    return;
+  }
+  if(activeGlob){
+    // keep filter applied; bar keeps the glob; status already shows counts
+    setStatus('Filter active: '+activeGlob+' — Esc or clear the bar to see everything','good');
+    return;
+  }
+  // accept completion if present and user just pressed Enter without editing
+  const target=resolve(addr.value)|| (compl?resolve(compl.dirPath+'/'+compl.name):null);
+  setChip(null);
+  if(!tryNav(addr.value)&&(compl&&(resolve(compl.fullText)||(resolve(compl.dirPath+'/'+compl.name))))){
+    tryNav(resolve(compl.fullText)?compl.fullText:(compl.dirPath+'/'+compl.name));
+  }
+}
+addr.addEventListener('focus',()=>{addr.select();completeFromInput();});
+addr.addEventListener('input',()=>{compl=null;completeFromInput();});
+addr.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    activeGlob=null;setChip(null);
+    addr.value=disp(cwd);addr.blur();selIdx=-1;render();
+    e.preventDefault();
+  }else if(e.key==='Enter'){
+    submitBar();e.preventDefault();
+  }else if(e.key==='Tab'){
+    e.preventDefault();
+    if(addr.selectionStart!==addr.selectionEnd){
+      // accept offered completion
+      const end=addr.value.length;
+      const txt=addr.value;
+      addr.setSelectionRange(end,end);
+      completeFromInput();
+      // if we just completed a directory, offer the next level immediately
+      if(txt.endsWith('/'))completeFromInput();
+    }else if(compl){
+      addr.value=compl.fullText;
+      const end=addr.value.length;
+      addr.setSelectionRange(end,end);
+      completeFromInput();
+    }
+  }else if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    // move selection in the visible list (through the bar)
+    const dir=e.key==='ArrowDown'?1:-1;
+    if(rows.length){
+      if(selIdx<0&&dir===1)selIdx=0;
+      else if(selIdx<0)selIdx=rows.length-1;
+      else selIdx=(selIdx+dir+rows.length)%rows.length;
+      hlIdx=-1;
+      rows[selIdx].el.scrollIntoView({block:'nearest'});
+      paintRowStates();
+    }
+    e.preventDefault();
+  }
+});
+
+/* ---------- inline rename ---------- */
+function startRename(idx){
+  if(idx<0||!rows[idx].entry.node||rows[idx].entry.name==='..')return;
+  const tr=rows[idx].el, nameCell=tr.querySelector('td.name');
+  const old=rows[idx].entry.name;
+  const inp=document.createElement('input');
+  inp.className='rename';inp.value=old;inp.spellcheck=false;
+  nameCell.textContent='';nameCell.appendChild(inp);
+  inp.focus();const dot=old.lastIndexOf('.');
+  inp.setSelectionRange(0,dot>0?dot:old.length);
+  renaming={idx,old,inp};
+  inp.addEventListener('keydown',ev=>{
+    ev.stopPropagation();
+    if(ev.key==='Enter'){
+      const nn=inp.value.trim();
+      finishRename(nn);
+    }else if(ev.key==='Escape'){
+      renaming=null;render();
+    }
+  });
+  inp.addEventListener('blur',()=>{if(renaming){finishRename(inp.value.trim());}});
+  function finishRename(nn){
+    renaming=null;
+    if(nn&&nn!==old)renameSelectionAt(old,nn);
+    else render();
+  }
+}
+function renameSelectionAt(old,newName){
+  const n=nodeAt(cwd);
+  if(n.children[newName]){setStatus('"'+newName+'" already exists here','bad');render();return;}
+  n.children[newName]=n.children[old];
+  delete n.children[old];
+  render();setStatus('Renamed '+old+' → '+newName,'good');
+}
+
+/* ---------- global keyboard ---------- */
+document.addEventListener('keydown',e=>{
+  if(e.target===addr)return;
+  if(e.target.tagName==='INPUT')return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='l'){addr.focus();addr.select();e.preventDefault();}
+  else if(e.ctrlKey||e.metaKey){
+    const k=e.key.toLowerCase();
+    if(k==='c'&&selIdx>=0){runCmd(':copy');e.preventDefault();}
+    else if(k==='x'&&selIdx>=0){runCmd(':cut');e.preventDefault();}
+    else if(k==='v'){runCmd(':paste');e.preventDefault();}
+    return;
+  }
+  else if(e.key==='/'){addr.focus();e.preventDefault();}
+  else if(e.key==='ArrowDown'){if(rows.length){selIdx=selIdx<0?0:Math.min(selIdx+1,rows.length-1);hlIdx=-1;rows[selIdx].el.scrollIntoView({block:'nearest'});paintRowStates();}e.preventDefault();}
+  else if(e.key==='ArrowUp'){if(rows.length){selIdx=selIdx<=0?-1:selIdx-1;hlIdx=-1;if(selIdx>=0)rows[selIdx].el.scrollIntoView({block:'nearest'});paintRowStates();}e.preventDefault();}
+  else if(e.key==='Enter'&&selIdx>=0){openEntry(rows[selIdx].entry);e.preventDefault();}
+  else if(e.key==='F2'&&selIdx>=0){startRename(selIdx);e.preventDefault();}
+  else if(e.key==='Delete'&&selIdx>=0){runCmd(':rm');e.preventDefault();}
+  else if(e.key==='Backspace'){nav(parentOf(cwd));e.preventDefault();}
+  else if(e.key==='Escape'){if(activeGlob){activeGlob=null;addr.value=disp(cwd);render();}else{selIdx=-1;hlIdx=-1;paintRowStates();}}
+});
+
+/* ---------- boot ---------- */
+addr.value=disp(cwd);
+render();
+setStatus('Seeded aliases: dl → ~/Downloads · proj → ~/projects · pics → ~/Pictures — try typing "pic" + Tab');
+</script>
+</body>
+</html>

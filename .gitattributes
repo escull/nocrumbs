@@ -1,0 +1,13 @@
+# Normalise text line endings in the repo; checkouts use the platform default.
+* text=auto
+
+# Always LF
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+LICENSE text eol=lf
+
+# Binary
+*.png binary
+*.ico binary
+*.exe binary
