@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use nocrumbs_core::{Entry, Fs, fold_cmp};
+use nocrumbs_core::{Entry, Fs, NameRules, fold_cmp};
 
 /// Fixed timestamp for directories (2025-10-09).
 const DIR_MTIME: i64 = 1_760_000_000;
@@ -71,6 +71,11 @@ impl Fs for MemFs {
 
     fn case_insensitive(&self) -> bool {
         self.case_insensitive
+    }
+
+    /// A case-insensitive MemFs plays Windows; a case-sensitive one plays Linux.
+    fn name_rules(&self) -> NameRules {
+        if self.case_insensitive { NameRules::Windows } else { NameRules::Posix }
     }
 }
 

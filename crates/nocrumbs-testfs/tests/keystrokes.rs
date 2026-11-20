@@ -267,13 +267,15 @@ fn enter_with_a_filter_keeps_the_filter() {
 }
 
 #[test]
-fn enter_on_a_command_says_so_without_crashing() {
-    for cmd in [":rm", ":mkdir foo", ":bogus", ":", ":sort size desc"] {
+fn enter_on_any_command_never_crashes_or_moves() {
+    for cmd in
+        [":rm", ":mkdir foo", ":bogus", ":", ":sort size desc", ":cd", ":alias", ":help", ":\"x", ":mkdir \"open"]
+    {
         let mut s = session();
         s.type_str(cmd);
         s.key(Key::Enter);
-        assert_eq!(s.bar().cwd(), HOME);
-        assert_eq!(s.bar().mode(), Mode::Command, "{cmd}");
+        assert_eq!(s.bar().cwd(), HOME, "{cmd}");
+        assert!(!s.bar().status().0.is_empty(), "{cmd} should say something");
     }
 }
 
@@ -299,7 +301,7 @@ fn parent_and_home_navigation() {
 #[test]
 fn command_arguments_can_be_typed_in_full() {
     // Concept-sketch bug: `:mkdir foo` turned into `:mkdir NAME`.
-    for input in [":mkdir foo", ":alias p ~/x", ":cd /etc", ":rename new name"] {
+    for input in [":mkdir foo", ":alias p ~/x", ":rename new name", ":touch a b"] {
         let mut s = session();
         s.type_str(input);
         assert_eq!(s.text(), input);

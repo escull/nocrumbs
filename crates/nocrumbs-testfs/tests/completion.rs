@@ -2,14 +2,14 @@
 //! The first keystroke-style cases. Each one is a regression for a bug found in the
 //! original HTML concept sketch (see ROADMAP.md, progress log).
 
-use nocrumbs_core::{Analysis, BarContext, Mode, analyze, display_path, resolve};
+use nocrumbs_core::{Aliases, Analysis, BarContext, Mode, analyze, display_path, resolve};
 use nocrumbs_testfs::MemFs;
 
 const HOME: &str = "/home/user";
 
 fn typed(input: &str, ci: bool) -> Analysis {
     let fs = MemFs::sample(ci, 1_000);
-    let c = BarContext { fs: &fs, cwd: HOME, home: HOME, sep: '/', show_hidden: false };
+    let c = BarContext { fs: &fs, aliases: &Aliases::new(), cwd: HOME, home: HOME, sep: '/', show_hidden: false };
     analyze(input, &c)
 }
 
@@ -92,11 +92,16 @@ fn dotfiles_complete_only_when_a_dot_is_typed() {
 #[test]
 fn command_arguments_are_never_overwritten() {
     // Concept-sketch bug: `:mkdir foo` became `:mkdir NAME`.
-    for input in [":mkdir foo", ":alias p ~/x", ":cd /etc", ":rename new name", ":touch a"] {
+    for input in [":mkdir foo", ":alias p ~/x", ":rename new name", ":touch a"] {
         let a = typed(input, true);
         assert_eq!(a.mode, Mode::Command);
         assert!(a.completion.is_none(), "{input} should not offer a completion");
     }
+    // Path arguments (`:cd PATH`) may be completed, but only by appending: the typed
+    // characters are never replaced.
+    let a = typed(":cd /etc", true);
+    let c = a.completion.unwrap();
+    assert_eq!((c.ghost.as_str(), c.accepted.as_str()), ("/", ":cd /etc/"));
 }
 
 #[test]
@@ -126,7 +131,7 @@ fn glob_selects_folder_by_path_prefix() {
 #[test]
 fn resolves_existing_paths_and_reports_missing_ones() {
     let fs = MemFs::sample(true, 100);
-    let c = BarContext { fs: &fs, cwd: HOME, home: HOME, sep: '/', show_hidden: false };
+    let c = BarContext { fs: &fs, aliases: &Aliases::new(), cwd: HOME, home: HOME, sep: '/', show_hidden: false };
     let r = resolve("documents/RECIPES", &c).expect("case-insensitive");
     assert_eq!((r.path.as_str(), r.is_dir), ("/home/user/Documents/recipes", true));
     let r = resolve("Documents/resume.docx", &c).unwrap();
@@ -142,7 +147,7 @@ fn resolves_existing_paths_and_reports_missing_ones() {
 #[test]
 fn big_folder_completion_is_correct() {
     let fs = MemFs::sample(true, 100_000);
-    let c = BarContext { fs: &fs, cwd: HOME, home: HOME, sep: '/', show_hidden: false };
+    let c = BarContext { fs: &fs, aliases: &Aliases::new(), cwd: HOME, home: HOME, sep: '/', show_hidden: false };
     let a = analyze("/big/report-0999", &c);
     let comp = a.completion.expect("completion");
     // Alphabetically first existing report-0999NN.pdf: i % 3 == 0, and i % 20 != 0 (those are folders).

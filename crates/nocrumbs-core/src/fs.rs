@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::sync::Arc;
 
+use crate::names::NameRules;
+
 /// One directory entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
@@ -26,4 +28,8 @@ pub trait Fs: Send + Sync {
     fn entries(&self, dir: &str) -> Option<Arc<[Entry]>>;
     /// Whether names compare case-insensitively (Windows, default macOS).
     fn case_insensitive(&self) -> bool;
+    /// Which naming rules apply to files created here (brief §8.2). Defaults to Unix rules.
+    fn name_rules(&self) -> NameRules {
+        NameRules::Posix
+    }
 }

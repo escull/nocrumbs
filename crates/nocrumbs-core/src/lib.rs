@@ -10,15 +10,24 @@
 //! field for keystroke tests ([`sim::Session`]) exist. Aliases, real commands, history and file
 //! operations do not yet.
 
+mod alias;
 mod bar;
+mod command;
 mod complete;
 mod fs;
 mod glob;
+mod names;
 mod path;
 pub mod sim;
 
+pub use alias::Aliases;
 pub use bar::{Bar, EditKind, Key, Sel, Tone};
-pub use complete::{Analysis, BarContext, Completion, Mode, Resolved, analyze, display_path, resolve};
+pub use command::{Command, CommandError, HELP, SortDir, SortKey, parse as parse_command};
+pub use complete::{
+    AliasUse, Analysis, BarContext, Completion, CompletionKind, Mode, ResolveError, Resolved, analyze, display_path,
+    resolve, resolve_detailed,
+};
 pub use fs::{Entry, Fs};
 pub use glob::Glob;
+pub use names::{AliasNameError, NameError, NameRules, validate_alias_name, validate_name};
 pub use path::{fold_cmp, is_sep};

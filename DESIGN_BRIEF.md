@@ -98,6 +98,11 @@ When the typed path's parent folder differs from the current folder (e.g. `Docum
 - User-defined named shortcuts: `:alias proj ~/projects`, removed with `:unalias proj`. A small seed set may be offered on first run (user can delete them).
 - Typing an alias navigates to its target. Aliases compose with subpaths and globs: `proj/nocrumbs`, `proj/*.md`. The alias chip shows on the bar for any input whose first segment is an alias, with the resolved target in the status line.
 - Alias names are validated: no separators, no leading `:` or `~`, no `* ? .`, non-empty. An alias that shadows a real folder in the current directory is allowed but the status line says so.
+- Alias names are offered as completion candidates for the first path segment, alphabetically with the folders; an alias
+  sorts before a folder of the same name. An alias **beats** a real folder with the same name (alias is step 3 of the
+  resolution order, before literal paths) and the status line says so. A name that is exactly an alias previews its
+  target folder as you type.
+- Alias names are one path segment and may not contain `*`, `?`, `.`, whitespace or separators, or start with `:` or `~`.
 - Aliases persist across sessions. The target is validated at creation; a **dangling target at use time** shows "alias `dl` → `D:\Downloads` no longer exists" (not a generic "No such path").
 
 ## 7. Glob Filtering
@@ -125,8 +130,17 @@ When the typed path's parent folder differs from the current folder (e.g. `Docum
 | `:alias NAME PATH` / `:unalias NAME` | Manage aliases |
 | `:help` | One-line reminder of everything above |
 
+A **successful** command returns the bar to the idle current-path text (selected, ready for the next input) with a
+confirmation in the status line; an **error** keeps the command text so it can be fixed, flashes the bar, and says
+what is wrong and how to use the command (`Usage: :cd PATH`, `Unknown command :foo. Try :help`).
+
 ### 8.1 Argument syntax
 Arguments are whitespace-separated; **double quotes group** (`:mkdir "my folder"`) and `\"` escapes a quote. If a command takes exactly one free-text argument (`:mkdir`, `:touch`, `:rename`, `:cd`), the **rest of the line** is the argument, so unquoted spaces also work for those.
+
+A quoted argument followed by more text (`:mkdir "a b" c`) is not guessed at: for the free-text commands the line is
+taken literally. Command words are case-insensitive. `:rm!` is its own word, not `:rm` with an argument. `:sort KEY`
+without a direction keeps the current direction if KEY is already the sort, otherwise starts ascending. Folders stay
+first in every sort; the direction applies within each group, and ties break by name.
 
 ### 8.2 Name validation (all create/rename/paste operations)
 Reject: empty names, `.`/`..`, path separators, and — on Windows — `< > : " | ? *`, control characters, trailing space or dot, and reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1–9`, `LPT1–9`). Collision checks follow the FS's case-sensitivity. Each rejection gives a specific message.

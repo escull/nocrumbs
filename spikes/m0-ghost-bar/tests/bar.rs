@@ -64,11 +64,12 @@ fn starts_on_home_with_everything_selected() {
 #[test]
 fn ghost_text_is_appended_and_selected() {
     let mut u = Ui::new(1_000);
-    u.type_str("D");
-    assert_eq!(u.app().typed(), "D");
+    // `Do`, not `D`: the seeded alias `dl` sorts before Documents and would win a bare `D`.
+    u.type_str("Do");
+    assert_eq!(u.app().typed(), "Do");
     assert_eq!(u.app().text(), "Documents/");
-    assert_eq!(u.app().ghost_chars(), 9);
-    assert_eq!(u.selection(), Some((1, 10)), "only the ghost is selected");
+    assert_eq!(u.app().ghost_chars(), 8);
+    assert_eq!(u.selection(), Some((2, 10)), "only the ghost is selected");
     assert_eq!(u.app().highlighted(), Some("Documents"), "the row Tab would go to is highlighted");
 }
 
@@ -255,4 +256,35 @@ fn perf_100k_keystrokes() {
     frame(&mut u, "type '.' (filter 100k by glob)", &|u| u.type_str("."));
     frame(&mut u, "type 'pdf' (filter 100k by glob)", &|u| u.type_str("pdf"));
     eprintln!("rows now: {}", u.app().shown_rows());
+}
+
+#[test]
+fn aliases_and_cd_arguments_complete_in_the_real_widget() {
+    let mut u = Ui::new(1_000);
+    u.type_str("pi");
+    assert_eq!(u.app().text(), "pics/", "an alias is offered as ghost text");
+    assert_eq!(u.app().ghost_chars(), 3);
+    u.key(Key::Escape);
+    u.key(Key::Escape);
+    u.type_str(":cd Doc");
+    assert_eq!(u.app().text(), ":cd Documents/");
+    assert_eq!(u.app().highlighted(), Some("Documents"));
+}
+
+#[test]
+fn commands_run_and_alt_arrows_walk_the_history() {
+    let mut u = Ui::new(1_000);
+    u.type_str("proj/nocr");
+    u.key(Key::Enter);
+    assert_eq!(u.app().cwd(), "/home/user/projects/nocrumbs");
+    u.h.key_press_modifiers(egui::Modifiers::ALT, Key::ArrowLeft);
+    u.h.run_steps(2);
+    assert_eq!(u.app().cwd(), "/home/user", "Alt+Left goes back");
+    u.h.key_press_modifiers(egui::Modifiers::ALT, Key::ArrowRight);
+    u.h.run_steps(2);
+    assert_eq!(u.app().cwd(), "/home/user/projects/nocrumbs", "Alt+Right goes forward");
+    u.type_str(":sort size desc");
+    u.key(Key::Enter);
+    assert_eq!(u.app().status_text(), "Sorted by size, descending");
+    assert_eq!(u.app().text(), "~/projects/nocrumbs", "a finished command returns to the idle bar");
 }

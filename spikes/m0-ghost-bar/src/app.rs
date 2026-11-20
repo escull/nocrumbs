@@ -13,7 +13,7 @@ use egui::text::{CCursor, CCursorRange};
 use egui::text_edit::TextEditState;
 use egui::{Align, Color32, Event, EventFilter, Id, ImeEvent, Key, RichText, Sense, TextStyle};
 use egui_extras::{Column, TableBuilder};
-use nocrumbs_core::{Bar, EditKind, Key as BarKey, Mode, Sel, Tone};
+use nocrumbs_core::{Aliases, Bar, EditKind, Key as BarKey, Mode, Sel, SortDir, SortKey, Tone};
 use nocrumbs_testfs::MemFs;
 
 use crate::format;
@@ -76,8 +76,14 @@ impl App {
     pub fn with_start(big_n: usize, start: &str) -> Self {
         let fs = Arc::new(MemFs::sample(true, big_n));
         let mut bar = Bar::new(fs, HOME, start, '/');
+        // Seed aliases (brief section 6); persistence comes with the Windows shell.
+        bar.set_aliases(Aliases::from_pairs([
+            ("dl", "/home/user/Downloads"),
+            ("proj", "/home/user/projects"),
+            ("pics", "/home/user/Pictures"),
+        ]));
         bar.set_status(
-            "Try: Doc then Tab · ~/Down · /big/report-09 · *.pdf · ~/Downloads/*.pdf · :sor · ../",
+            "Try: Doc then Tab · pi · proj/nocr · dl/*.pdf · :cd Doc · :sort size desc · :alias work ~/Documents · :help",
             Tone::Info,
         );
         Self {
@@ -166,7 +172,7 @@ impl App {
             self.bar_row(ui, &ctx);
             ui.add_space(4.0);
             ui.label(
-                RichText::new("Tab complete · Enter go · Up/Down select · Esc: ghost, then revert, then blur · / or Ctrl+L focus the bar")
+                RichText::new("Tab complete · Enter go · Up/Down select · Alt+Left/Right history · Esc: ghost, then revert, then blur · / or Ctrl+L focus the bar")
                     .small()
                     .weak(),
             );
@@ -207,11 +213,21 @@ impl App {
                     Key::Enter => keys.push(BarKey::Enter),
                     Key::ArrowUp => keys.push(BarKey::Up),
                     Key::ArrowDown => keys.push(BarKey::Down),
+                    Key::ArrowLeft if modifiers.alt => keys.push(BarKey::Back),
+                    Key::ArrowRight if modifiers.alt => keys.push(BarKey::Forward),
                     Key::L if modifiers.command => refocus = true,
                     _ => {}
                 },
                 _ => {}
             }
+        }
+        // Alt+Left/Right are history, not caret movement: keep them from the TextEdit.
+        for k in &keys {
+            match k {
+                BarKey::Back => ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, Key::ArrowLeft)),
+                BarKey::Forward => ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, Key::ArrowRight)),
+                _ => false,
+            };
         }
         if refocus {
             self.blurred = false;
@@ -236,9 +252,12 @@ impl App {
         }
 
         ui.horizontal(|ui| {
+            let alias_in_use = self.bar.analysis().alias.is_some();
             let (label, color) = match self.bar.mode() {
                 Mode::Command => ("command", ACCENT),
+                Mode::Glob if alias_in_use => ("filter via alias", Color32::from_rgb(0xfe, 0xbc, 0x2e)),
                 Mode::Glob => ("filter", Color32::from_rgb(0xfe, 0xbc, 0x2e)),
+                Mode::Path if alias_in_use => ("alias", Color32::from_rgb(0x4a, 0xd2, 0x95)),
                 Mode::Path => ("path", Color32::from_gray(150)),
                 Mode::Empty => ("", Color32::from_gray(150)),
             };
@@ -334,12 +353,29 @@ impl App {
         }
         let bar = &self.bar;
         let (selected, hl) = (bar.selected_row(), bar.highlighted_row());
+        let sort = bar.sort();
         let mut clicked = None;
+        let mut header_clicked = None;
         table
             .header(ROW_H, |mut h| {
-                for t in ["Name", "Size", "Modified", "Kind"] {
+                for (title, key) in [
+                    ("Name", Some(SortKey::Name)),
+                    ("Size", Some(SortKey::Size)),
+                    ("Modified", Some(SortKey::Date)),
+                    ("Kind", None),
+                ] {
                     h.col(|ui| {
-                        ui.label(RichText::new(t).strong().weak());
+                        // The sort shows as text: egui's default fonts have no arrow glyphs.
+                        let suffix = match (key, sort) {
+                            (Some(k), (sk, SortDir::Asc)) if k == sk => " (asc)",
+                            (Some(k), (sk, SortDir::Desc)) if k == sk => " (desc)",
+                            _ => "",
+                        };
+                        let label = egui::Label::new(RichText::new(format!("{title}{suffix}")).strong().weak());
+                        let r = ui.add(if key.is_some() { label.sense(Sense::click()) } else { label });
+                        if r.clicked() {
+                            header_clicked = key;
+                        }
                     });
                 }
             })
@@ -380,6 +416,9 @@ impl App {
             });
         if clicked.is_some() {
             self.bar.select_row(clicked);
+        }
+        if let Some(key) = header_clicked {
+            self.bar.sort_by_column(key);
         }
     }
 }
