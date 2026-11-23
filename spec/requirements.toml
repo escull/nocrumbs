@@ -834,7 +834,7 @@ section = "11 Visual direction"
 title = "Three distinct row states: selection, completion highlight, hover"
 status = "partial"
 tests = ["keystrokes.rs::selection_is_separate_from_the_completion_highlight"]
-note = "selection and highlight are separate states in the core and drawn differently; hover is egui's, and the look has not been reviewed on screen"
+note = "selection and highlight are separate states in the core; checked by eye on 2026-11-23 that a selected row and a highlighted row are distinguishable; hover is egui's and was not specifically reviewed"
 
 [[requirement]]
 id = "VIS-02"
@@ -924,7 +924,7 @@ id = "ACC-01"
 section = "13 Accessibility and input"
 title = "The bar, list and status line are exposed to screen readers (AccessKit)"
 status = "manual"
-note = "check with Narrator or NVDA: the bar is announced as an edit field with its text, rows are reachable and announced, the status line is read (spike checklist, still open)"
+note = "PARKED: check with Narrator (installed) or NVDA: the bar is announced as an edit field with its text, rows are reachable and announced, the status line is read. Not yet run; a gate before the bar is declared accessible and before any release (docs/spike.md)"
 
 [[requirement]]
 id = "ACC-02"
@@ -940,7 +940,7 @@ section = "13 Accessibility and input"
 title = "IME composition works in the bar"
 status = "partial"
 tests = ["keystrokes.rs::composition_suppresses_completion", "bar.rs::composition_suppresses_completion"]
-note = "completion is suppressed during composition (tested through egui's IME events); a real IME on a real window is unchecked (spike checklist)"
+note = "completion is suppressed during composition (tested through egui's IME events); a real IME on a real window was skipped on 2026-11-23 for lack of an installed IME and is still unchecked"
 
 [[requirement]]
 id = "ACC-04"

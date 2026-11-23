@@ -194,7 +194,7 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 
 | ID | Requirement | Status | Tests | Notes |
 |---|---|---|---|---|
-| VIS-01 | Three distinct row states: selection, completion highlight, hover | partial | 1 | selection and highlight are separate states in the core and drawn differently; hover is egui's, and the look has not been reviewed on screen |
+| VIS-01 | Three distinct row states: selection, completion highlight, hover | partial | 1 | selection and highlight are separate states in the core; checked by eye on 2026-11-23 that a selected row and a highlighted row are distinguishable; hover is egui's and was not specifically reviewed |
 | VIS-02 | The current path is visible at all times: in the bar when idle and always in the status line | implemented | 2 |  |
 | VIS-03 | Mode chips (filter, alias, command) appear on the bar | manual | 0 | drawn by the egui front end; check by eye that the chip matches the mode while typing (spike checklist) |
 | VIS-04 | Dark theme with accent purple; light theme follows the OS | partial | 1 | the spike is dark only; light-follows-OS is not built |
@@ -216,9 +216,9 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 
 | ID | Requirement | Status | Tests | Notes |
 |---|---|---|---|---|
-| ACC-01 | The bar, list and status line are exposed to screen readers (AccessKit) | manual | 0 | check with Narrator or NVDA: the bar is announced as an edit field with its text, rows are reachable and announced, the status line is read (spike checklist, still open) |
+| ACC-01 | The bar, list and status line are exposed to screen readers (AccessKit) | manual | 0 | PARKED: check with Narrator (installed) or NVDA: the bar is announced as an edit field with its text, rows are reachable and announced, the status line is read. Not yet run; a gate before the bar is declared accessible and before any release (docs/spike.md) |
 | ACC-02 | Everything is operable by keyboard alone, with a visible focus indicator | partial | 3 | navigation and file operations work without the mouse; opening the selected row from a filter (OPN-01) and F2 rename do not yet |
-| ACC-03 | IME composition works in the bar | partial | 2 | completion is suppressed during composition (tested through egui's IME events); a real IME on a real window is unchecked (spike checklist) |
+| ACC-03 | IME composition works in the bar | partial | 2 | completion is suppressed during composition (tested through egui's IME events); a real IME on a real window was skipped on 2026-11-23 for lack of an installed IME and is still unchecked |
 | ACC-04 | Full Unicode names are matched, shown and never rewritten on disk | partial | 2 | matching and storage handle Unicode; the default egui fonts draw tofu for scripts they lack, so a font fallback stack is needed (M2) |
 | ACC-05 | High-contrast mode, OS text scaling and reduced motion are respected | planned | 0 | lands in M3 |
 

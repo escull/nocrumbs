@@ -1,7 +1,8 @@
 # Milestone 0 spike: can egui do the NoCrumbs bar?
 
-Status: **automated checks pass; two human checks (IME, screen reader) still open.** Go/no-go is
-therefore *provisionally go*; see [Verdict](#verdict).
+Status: **done, with two checks parked** (screen reader, IME). Ghost text, the 100k list, the mouse and
+high-DPI/narrow-window behaviour were checked by hand on 2026-11-23 and pass. Go/no-go is **go**, with the
+parked checks carried forward; see [Verdict](#verdict).
 
 ## Run it
 
@@ -93,26 +94,36 @@ the previous result when the new pattern extends the old one).
   `WM_KEYDOWN` posting is not faithful (characters doubled or ignored), so real-window typing
   has to be done by a person. That is why the headless tests carry the weight.
 
-## Still to verify by hand (human)
+## Hand checks (human)
 
-- [ ] **Ghost text on screen.** Type `Doc`: the rest of `Documents/` shows selected in accent
-      purple, the next typed letter replaces it, no flicker or caret jump.
-- [ ] **IME.** With the Microsoft Japanese or Pinyin IME, compose text in the bar. Expected:
-      no ghost text while composing, candidate window appears at the caret, committed text
-      completes normally afterwards. (The headless test only covers the egui event path.)
-- [ ] **Screen reader.** With Narrator (Win+Ctrl+Enter) or NVDA: the bar is announced as an
-      edit field with its text; the list is reachable and rows are announced; the status line
-      is read. egui provides AccessKit, but a list of 100k virtualised rows and a custom
-      ghost selection are exactly where it can fall short. Record what is and isn't spoken.
-- [ ] **Mouse.** Click in the bar with ghost text showing; click a row; check selection
-      colours are distinguishable from the completion highlight.
-- [ ] **High DPI / 150%+ scaling**, and a window narrower than 700 px.
+Done on 2026-11-23, Windows 11 at 150% scaling, optimised build.
+
+- [x] **Ghost text on screen: pass.** `Do` showed `Documents/` with only the rest selected in accent
+      purple; the next letter replaced it; Backspace removed it and it stayed gone; Tab accepted and
+      offered the next level; Esc reverted. No flicker or caret jump.
+- [x] **Mouse: pass.** Clicking in the bar with ghost text committed it as text; a clicked row got a
+      solid selection; the completion highlight was distinguishable from it.
+- [x] **High DPI / narrow window: pass.** The machine runs at 150%; the window was also resized below
+      700 px and stayed usable.
+- [ ] **Screen reader: parked.** Narrator is installed (Win+Ctrl+Enter) but nobody could run the check
+      yet. Still to learn: is the bar announced as an edit field with its text, are the list rows
+      reachable and announced, is the status line read? This is the likeliest place for egui to fall
+      short (100k virtualised rows, a custom ghost selection). Tracked as ACC-01 (manual).
+- [ ] **IME: skipped.** No IME is installed on the test machine (English UK and Latvian keyboards
+      only). The egui event path is covered by a headless test; a real Japanese or Pinyin IME is
+      unchecked. Tracked as ACC-03 (partial).
+- [x] **Settings file, end to end.** A real session with `--state` wrote a valid `config.toml`
+      with the seed aliases and the folders and file that were visited, with correct counts.
 
 ## Verdict
 
-**Provisionally go on egui/eframe.** The two riskiest technical questions (ghost-text
-selection semantics and a 100k-row list) are answered by passing tests and measurements. The
-open risk is accessibility (screen reader on a virtualised list and a custom selection) and
-real-IME behaviour; neither is a reason to switch toolkits yet, but each could force a custom
-widget, so do the checks above before M1 builds on the bar. Fallbacks stay as in the brief
-(§3.2): custom-painted bar, then `iced`/`slint`.
+**Go on egui/eframe.** The questions that could have sunk the toolkit are answered with evidence:
+ghost-text selection semantics (14 headless tests, then confirmed on screen by hand), a 100k-row list
+(about 1 ms a frame, 6 to 13 ms of layout per keystroke), mouse behaviour and 150% scaling.
+
+Two risks are **parked, not cleared**: a screen reader on a virtualised list with a custom ghost
+selection, and a real IME. Neither is a reason to change toolkit now, but each could force a custom
+widget, so they are gates, not footnotes: the screen-reader check must be done before the bar is
+declared accessible and before any release (milestone M3, ACC-01), and the IME check before 1.0
+(ACC-03). If the screen-reader check fails, the fallback order is in brief section 3.2: a
+custom-painted bar, then `iced` or `slint`.

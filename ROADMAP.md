@@ -1,6 +1,6 @@
 # NoCrumbs roadmap
 
-Last reviewed: 2026-11-23 | Last updated: 2026-11-23 | Change: requirements spec with a checker (`cargo xtask spec`); aliases and frecency persist; estimates unchanged
+Last reviewed: 2026-11-23 | Last updated: 2026-11-23 | Change: M0 hand checks done (ghost, mouse, DPI pass; screen reader parked, IME skipped); estimates unchanged
 
 One-page summary of where NoCrumbs is, what comes next, and what could go wrong. NoCrumbs is a native Rust/egui single-exe file explorer driven by one address bar (Windows first, then Linux, then macOS). The *what* is in [DESIGN_BRIEF.md](DESIGN_BRIEF.md); this file is the *where we are*.
 
@@ -19,12 +19,12 @@ Keep it current: every working session, update the milestone row and add one lin
 
 ## Stage
 
-**Stage: pre-alpha (spike built, provisionally go)** · next: **spike passed** (two human checks), then **alpha** (core passes its spec tests headless).
+**Stage: pre-alpha (spike done: go, two accessibility checks parked)** · next: **alpha** (core passes its spec tests headless; Windows shell does real navigation, rename and delete-to-Recycle-Bin).
 
 | Stage | Gate |
 |---|---|
 | Concept | Brief written and reviewed *(done)* |
-| Spike | Milestone-0 questions answered: ghost-text bar, 100k-row list, IME, screen reader on egui |
+| Spike | Milestone-0 questions answered: ghost-text bar, 100k-row list, IME, screen reader on egui *(done 2026-11-23 except the screen-reader and IME checks, parked as gates for M3)* |
 | Alpha | Core logic passes all keystroke-script tests headless; Windows shell does real navigation, rename, delete-to-Recycle-Bin |
 | Beta | All §15 acceptance criteria met on Windows; async I/O, undo, clipboard interop with Explorer, single signed exe within budgets |
 | 1.0 | Beta + accessibility pass + performance budgets (§12) measured on real hardware |
@@ -47,10 +47,10 @@ Keep it current: every working session, update the milestone row and add one lin
 
 | # | Milestone | Status | Estimate (h) | Exit criteria |
 |---|---|---|---|---|
-| M0 | **Spike**: egui bar with ghost text, 100k-row virtual list, IME, AccessKit pass | **in progress**: ghost text and 100k list proven by tests; IME and screen reader need a human | 8–16 | Go/no-go note in `docs/spike.md`; the three risks in brief §3.2 each answered with evidence |
+| M0 | **Spike**: egui bar with ghost text, 100k-row virtual list, IME, AccessKit pass | **done, 2 checks parked**: ghost text, 100k list, mouse and high DPI verified by tests and by hand; screen reader and IME parked (ACC-01, ACC-03) | 8–16 | Go/no-go note in `docs/spike.md`; the three risks in brief §3.2 each answered with evidence |
 | M1 | **Core**: `nocrumbs-core` + `nocrumbs-testfs` + keystroke-test harness; `spec/requirements.toml` | **nearly done**: everything in brief §4–§9 that does not need a real OS is built and spec-tracked; open: OPN-01, FUZ-01 and a few `partial` rows | 40–80 | Brief §4–§8 pass headless; every bug from the HTML concept is a regression test (§16) |
 | M2 | **Windows shell**: real `Fs`/`Platform`, async listing, Recycle Bin, clipboard interop, watcher, config/history | not started | 40–70 | §15 items 8–11 met on Windows; portable mode works |
-| M3 | **UI polish, accessibility, signed release** | not started | 30–60 | All §15 met; accessibility checks in §13; **v1.0 (Windows)** |
+| M3 | **UI polish, accessibility, signed release** | not started | 30–60 | All §15 met; accessibility checks in §13, including the parked M0 screen-reader (ACC-01) and IME (ACC-03) checks; **v1.0 (Windows)** |
 | M4 | **Linux port** | not started | 30–60 | Core unchanged; platform crate only |
 | M5 | **macOS port** | not started | 40–80 | Cmd-key map, Trash API, notarisation |
 
@@ -60,7 +60,7 @@ Ranked; the next thing to do is first.
 
 | Rank | Work | Estimate (h) |
 |---|---|---|
-| 0 | Finish M0: the human checklist in `docs/spike.md` (ghost on screen, IME, Narrator/NVDA, mouse, high DPI) | 1–3 |
+| 0 | Run the parked M0 checks when a tester or tools are available: Narrator or NVDA on the bar and list (ACC-01), a real IME (ACC-03) | 1–2 |
 | 1 | Close the last M1 gaps: OPN-01 (Enter opens the selected row), FUZ-01 (fuzz/property tests for the parser), CMP-15 (tint other matches), SEL-04 (selection size), KEY-08 (Shift+Del) | 8–16 |
 | 4 | Windows shell (M2): real `Fs` with Recycle Bin, `CF_HDROP` clipboard interop, async operations with progress and cancel, file watcher, `:open` | 40–70 |
 | 5 | Font fallback stack for arbitrary file names (CJK, Arabic, Thai, emoji): default egui fonts draw tofu | 6–12 |
@@ -69,7 +69,7 @@ Ranked; the next thing to do is first.
 
 | Risk | Effect | Mitigation |
 |---|---|---|
-| egui `TextEdit` can't render selected ghost text cleanly, or IME conflicts with completion | The central feature (§5) is compromised | Ghost text proven headless (M0); IME and screen reader still open. Fall back to a custom-painted bar, then to iced/slint (brief §3.2) |
+| egui `TextEdit` can't render selected ghost text cleanly, or IME conflicts with completion | The central feature (§5) is compromised | Ghost text and the 100k list proven (M0, tests and by hand); the screen reader and a real IME are **parked, not cleared** (ACC-01, ACC-03): gates before the bar is called accessible and before release. Fall back to a custom-painted bar, then to iced/slint (brief §3.2) |
 | egui draws tofu for characters its default fonts lack, and real file names contain anything | Unreadable names in the list | Font fallback stack in M2; the headless harness panics on missing glyphs so our own strings stay clean |
 | Windows path semantics (drive letters, UNC, case-insensitive, reserved names, long paths) leak into core | Linux/macOS ports become rewrites | Platform traits from day one; no `/` or `\` literals in core (brief §3.3) |
 | Real-filesystem edge cases (locked files, network shares, huge folders) break the "zero latency" promise | Feels slow exactly where users notice | Async listing with cancellation and virtualised list in M2, budgets in brief §12 |
@@ -83,6 +83,8 @@ Tracked in the brief, §18 (toolkit is decided: egui/eframe). Next ones to settl
 ## Progress log
 
 Newest first. One line per entry: date (milestone, what changed); estimates unchanged/changed.
+
+2026-11-23 (M0): Hand checks run on a real window at 150% scaling. Ghost text, mouse behaviour and the narrow-window layout pass; a real session wrote a correct settings file. Screen reader parked (Narrator is installed but nobody could run it) and IME skipped (none installed): both stay open as ACC-01 and ACC-03, recorded as gates for M3 and release, not as passes. M0 verdict: go on egui. Estimates unchanged.
 
 2026-11-23 (M1): Requirements spec and persistence. `spec/requirements.toml` gives 135 requirements stable IDs (from brief §3–§16 plus persistence), each mapped to tests; `cargo xtask spec` rejects duplicate ids, missing tests, implemented-without-tests and unknown acceptance references, `--run` proves every referenced test passes, `--write` regenerates `spec/COVERAGE.md`, and CI checks it is current. Acceptance criteria met: 5 of 12 (measured; was "0, by hand"). Aliases and frecency now persist: `Frecency` ranks completions by use and recency (§5.1), `StateStore` + `nocrumbs-config` write a TOML file atomically, set a damaged file aside as `.bad`, refuse a newer version, and honour portable mode; the spike takes `--state FILE`. 216 tests. Estimates unchanged.
 
