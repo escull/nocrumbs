@@ -1,0 +1,16 @@
+[package]
+name = "nocrumbs-config"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+nocrumbs-core = { version = "0.0.1", path = "../nocrumbs-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.2.2"
+
+[lints]
+workspace = true

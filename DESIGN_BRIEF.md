@@ -263,11 +263,11 @@ Dark theme (with a light theme following the OS setting), accent purple (#6d4aff
 1. ~~Toolkit~~ **Decided: egui/eframe.** Revisit only if the milestone-0 spike fails on ghost-text selection, IME or accessibility (fallbacks in §3.2).
 2. Whether `:` command prefix should be configurable (e.g. for users who prefer `>`), given drive letters are already safe.
 3. Windows "root" view: should `\` or `This PC` list the drives as a pseudo-folder? (Recommended: yes, `\` at top level lists drives.)
-4. Frecency store format and retention (§5.1); privacy expectations for history files.
+4. ~~Frecency store format and retention (§5.1)~~ **Decided:** frecency and aliases live in `config.toml` (or the portable `nocrumbs.toml`), versioned, written atomically; at most 2,000 paths, the least-used dropped first; score = visits x a weight that falls with age (x16 within the hour, x8 day, x4 week, x1 after). The file records folder and file *paths you used*, so it is personal data: it never leaves the machine, and portable mode keeps it beside the exe.
 5. Dotfile hiding default on Windows (recommended: off; hidden = attribute only).
 6. Opening files: add a configurable per-extension handler table, or leave strictly to the OS default?
 7. App name/branding check and code-signing certificate source.
 
 ## 19. Project Management
 
-Progress is tracked in [ROADMAP.md](ROADMAP.md): a one-page status with stage, milestones, ranked upcoming work, risks and a dated progress log. This brief is the *what*; the roadmap is the *where we are*. Requirements in §4–§15 will get stable IDs (e.g. `BAR-05`, `CMD-12`) in `spec/requirements.toml`, each mapped to keystroke-script tests, so roadmap percentages are measured, not guessed.
+Progress is tracked in [ROADMAP.md](ROADMAP.md): a one-page status with stage, milestones, ranked upcoming work, risks and a dated progress log. This brief is the *what*; the roadmap is the *where we are*. Requirements have stable IDs (e.g. `BAR-05`, `CMD-12`) in [spec/requirements.toml](spec/requirements.toml), each mapped to the tests that prove it. `cargo xtask spec` checks the mapping, and [spec/COVERAGE.md](spec/COVERAGE.md) (generated) says what is implemented, partial, manual or planned and which of the §15 acceptance criteria are met, so progress is measured, not guessed. A change to behaviour adds or updates a requirement and its tests in the same commit.

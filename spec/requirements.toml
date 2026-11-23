@@ -1,0 +1,1091 @@
+# NoCrumbs requirements: every requirement of DESIGN_BRIEF.md, with a stable ID and the tests
+# that prove it. Checked by `cargo xtask spec`; the report is spec/COVERAGE.md.
+#
+# IDs are `AREA-NN` and are never renumbered or reused: retire a requirement by editing its
+# text, not by deleting the id. A requirement is
+#
+#   implemented  built, and every test listed passes (needs at least one test)
+#   partial      built in part; tests cover what is built, `note` says what is missing
+#   manual       cannot be proven by an automated test (hardware, screen reader, a measurement);
+#                `note` says how a human checks it
+#   planned      not built yet; `milestone` says where it lands (ROADMAP.md)
+#
+# Tests are `file.rs::test_name` for integration tests (the file name is unique in the workspace)
+# and `unit:module::tests::test_name` for unit tests.
+#
+# `[[acceptance]]` are the 12 acceptance criteria of brief section 15; each is met only when
+# every requirement it lists is implemented.
+
+version = 1
+
+# ---------------------------------------------------------------- 3 Platform and distribution
+
+[[requirement]]
+id = "DST-01"
+section = "3 Platform and distribution"
+title = "The core is UI-free and testable headless against an in-memory filesystem"
+status = "implemented"
+tests = ["keystrokes.rs::ghost_text_is_appended_and_selected", "bar.rs::ghost_text_is_appended_and_selected"]
+
+[[requirement]]
+id = "DST-02"
+section = "3 Platform and distribution"
+title = "All filesystem access goes through the Fs trait; a read-only Fs is valid and says what it cannot do"
+status = "implemented"
+tests = ["memfs_write.rs::a_read_only_fs_says_so", "fileops.rs::a_read_only_filesystem_says_what_it_cannot_do"]
+
+[[requirement]]
+id = "DST-03"
+section = "3 Platform and distribution"
+title = "Portable mode: a nocrumbs.toml next to the exe holds all state"
+status = "implemented"
+tests = ["store.rs::portable_mode_wins_when_the_file_sits_next_to_the_exe"]
+
+[[requirement]]
+id = "DST-04"
+section = "3 Platform and distribution"
+title = "Otherwise state lives in the user's config folder"
+status = "implemented"
+tests = ["store.rs::otherwise_the_users_config_folder_is_used", "store.rs::nothing_to_locate_with_no_environment"]
+
+[[requirement]]
+id = "DST-05"
+section = "3 Platform and distribution"
+title = "Fully functional with no config file present"
+status = "implemented"
+tests = ["store.rs::a_missing_file_loads_as_empty_without_creating_anything"]
+
+[[requirement]]
+id = "DST-06"
+section = "3 Platform and distribution"
+title = "One statically linked nocrumbs.exe, no installer, at most 10 MB, cold start at most 150 ms"
+status = "planned"
+milestone = "M3"
+
+[[requirement]]
+id = "DST-07"
+section = "3 Platform and distribution"
+title = "Release builds are code-signed"
+status = "planned"
+milestone = "M3"
+
+[[requirement]]
+id = "DST-08"
+section = "3 Platform and distribution"
+title = "Linux (X11 and Wayland) port"
+status = "planned"
+milestone = "M4"
+
+[[requirement]]
+id = "DST-09"
+section = "3 Platform and distribution"
+title = "macOS port (Cmd keys, Trash API)"
+status = "planned"
+milestone = "M5"
+
+# ---------------------------------------------------------------- 4 The address bar
+
+[[requirement]]
+id = "BAR-01"
+section = "4 The address bar"
+title = "Input is resolved in a fixed order: command, then glob, then alias, then literal path"
+status = "implemented"
+tests = ["commands.rs::resolution_order_is_command_then_glob_then_alias_then_path"]
+
+[[requirement]]
+id = "BAR-02"
+section = "4 The address bar"
+title = "Empty input plus Enter resets the bar to the current path"
+status = "implemented"
+tests = ["keystrokes.rs::empty_input_then_enter_resets_the_bar_to_the_current_path"]
+
+[[requirement]]
+id = "BAR-03"
+section = "4 The address bar"
+title = "Literal paths: absolute, home (~), relative, and .."
+status = "implemented"
+tests = ["completion.rs::home_and_absolute_and_parent_paths", "keystrokes.rs::parent_and_home_navigation", "completion.rs::resolves_existing_paths_and_reports_missing_ones"]
+
+[[requirement]]
+id = "BAR-04"
+section = "4 The address bar"
+title = "Both / and \\ are accepted as separators on input, and the typed one is kept"
+status = "implemented"
+tests = ["completion.rs::both_separators_work_and_are_preserved"]
+
+[[requirement]]
+id = "BAR-05"
+section = "4 The address bar"
+title = "Windows drive letters (C:\\) and UNC paths (\\\\server\\share)"
+status = "planned"
+milestone = "M2"
+
+[[requirement]]
+id = "BAR-06"
+section = "4 The address bar"
+title = "A file whose name starts with a colon is reachable as .\\:name"
+status = "planned"
+milestone = "M2"
+
+# ---------------------------------------------------------------- 5 Inline completion
+
+[[requirement]]
+id = "CMP-01"
+section = "5 Inline completion"
+title = "The best completion is appended in the bar as selected ghost text"
+status = "implemented"
+tests = ["keystrokes.rs::ghost_text_is_appended_and_selected", "bar.rs::ghost_text_is_appended_and_selected"]
+
+[[requirement]]
+id = "CMP-02"
+section = "5 Inline completion"
+title = "The user's typed characters never move or change while ghosting (case included)"
+status = "implemented"
+tests = [
+  "keystrokes.rs::typing_over_the_ghost_never_moves_typed_text",
+  "keystrokes.rs::typed_case_is_preserved_while_ghosting",
+  "completion.rs::ghost_never_alters_typed_text",
+  "completion.rs::command_arguments_are_never_overwritten",
+  "bar.rs::typing_over_the_ghost_never_moves_typed_text",
+]
+
+[[requirement]]
+id = "CMP-03"
+section = "5 Inline completion"
+title = "The row Tab would go to is highlighted, distinct from the selection"
+status = "implemented"
+tests = ["keystrokes.rs::ghost_text_is_appended_and_selected", "keystrokes.rs::selection_is_separate_from_the_completion_highlight"]
+
+[[requirement]]
+id = "CMP-04"
+section = "5 Inline completion"
+title = "Tab accepts the completion and the completed segment takes the filesystem's casing"
+status = "implemented"
+tests = ["completion.rs::tab_rewrites_to_canonical_case", "keystrokes.rs::tab_accepts_canonical_case_and_descends", "bar.rs::tab_accepts_canonical_case_and_descends"]
+
+[[requirement]]
+id = "CMP-05"
+section = "5 Inline completion"
+title = "Completing a folder appends the separator and immediately offers the next level (descent by Tab alone)"
+status = "implemented"
+tests = ["completion.rs::directories_offer_next_level_immediately", "keystrokes.rs::tab_accepts_canonical_case_and_descends", "completion.rs::nested_partial_completes_in_that_folder"]
+
+[[requirement]]
+id = "CMP-06"
+section = "5 Inline completion"
+title = "Backspace or Delete on ghost text removes it and does not re-offer it"
+status = "implemented"
+tests = ["keystrokes.rs::backspace_removes_the_ghost_and_does_not_reoffer_it", "keystrokes.rs::delete_key_also_removes_the_ghost_without_reoffering", "bar.rs::backspace_removes_the_ghost_and_does_not_reoffer_it"]
+
+[[requirement]]
+id = "CMP-07"
+section = "5 Inline completion"
+title = "Prefix matching is case-insensitive (Windows); case-sensitive first with a case-insensitive fallback elsewhere"
+status = "implemented"
+tests = ["completion.rs::case_sensitive_fs_falls_back_to_folding", "completion.rs::tab_rewrites_to_canonical_case"]
+
+[[requirement]]
+id = "CMP-08"
+section = "5 Inline completion"
+title = "Dotfiles and hidden entries are candidates when a dot is typed or hidden files are shown"
+status = "implemented"
+tests = ["completion.rs::dotfiles_complete_only_when_a_dot_is_typed", "keystrokes.rs::hidden_files_follow_the_setting_and_the_typed_dot"]
+
+[[requirement]]
+id = "CMP-09"
+section = "5 Inline completion"
+title = "Commands ghost-complete the command word and fixed keywords only, never placeholders"
+status = "implemented"
+tests = ["completion.rs::commands_complete_the_word_and_keywords_only", "keystrokes.rs::tab_completes_commands_without_placeholders", "keystrokes.rs::command_arguments_can_be_typed_in_full"]
+
+[[requirement]]
+id = "CMP-10"
+section = "5 Inline completion"
+title = "Alias names are completion candidates for the first path segment"
+status = "implemented"
+tests = ["commands.rs::alias_names_complete_as_the_first_segment"]
+
+[[requirement]]
+id = "CMP-11"
+section = "5 Inline completion"
+title = "A name that exists nowhere gets no ghost and no highlight; Enter reports No such path"
+status = "implemented"
+tests = ["completion.rs::no_such_path_means_no_completion", "keystrokes.rs::no_such_path_means_no_ghost_and_no_highlight", "keystrokes.rs::enter_on_a_missing_path_reports_and_stays"]
+
+[[requirement]]
+id = "CMP-12"
+section = "5 Inline completion"
+title = "Enter acts on the completed text, as a browser's URL bar does"
+status = "implemented"
+tests = ["keystrokes.rs::enter_navigates_to_the_completed_text", "commands.rs::a_ghosted_command_runs_as_completed"]
+
+[[requirement]]
+id = "CMP-13"
+section = "5 Inline completion"
+title = "Candidates are ranked by frecency (use and recency), then alphabetically"
+status = "implemented"
+tests = [
+  "persistence.rs::the_folder_you_actually_use_comes_first",
+  "persistence.rs::without_history_completion_is_alphabetical",
+  "persistence.rs::frecency_is_per_folder_and_applies_to_the_next_level_too",
+  "persistence.rs::many_old_visits_can_outweigh_one_recent_visit_and_the_reverse",
+  "unit:frecency::tests::score_decays_with_age",
+]
+
+[[requirement]]
+id = "CMP-14"
+section = "5 Inline completion"
+title = "While typing toward another folder the list previews it without navigating"
+status = "implemented"
+tests = ["keystrokes.rs::typing_toward_a_folder_previews_it"]
+
+[[requirement]]
+id = "CMP-15"
+section = "5 Inline completion"
+title = "Other matching candidates are signalled (+N more, fainter tint on their rows)"
+status = "partial"
+tests = ["keystrokes.rs::other_matches_are_reported"]
+note = "the status line says +N more; the other matching rows are not tinted"
+
+[[requirement]]
+id = "CMP-16"
+section = "5 Inline completion"
+title = "No completion is offered while an IME is composing"
+status = "implemented"
+tests = ["keystrokes.rs::composition_suppresses_completion", "bar.rs::composition_suppresses_completion"]
+
+[[requirement]]
+id = "CMP-17"
+section = "5 Inline completion"
+title = "Moving the caret off the ghost commits it as typed text; no ghost when the caret is not at the end"
+status = "implemented"
+tests = ["keystrokes.rs::moving_the_caret_commits_the_ghost_as_typed_text", "keystrokes.rs::no_ghost_when_the_caret_is_not_at_the_end", "keystrokes.rs::paste_offers_a_ghost_after_the_pasted_text"]
+
+[[requirement]]
+id = "CMP-18"
+section = "5 Inline completion"
+title = ":cd PATH and the path of :alias NAME PATH complete like a path, appending only"
+status = "implemented"
+tests = ["commands.rs::cd_completes_its_path_argument", "commands.rs::cd_completion_offers_aliases_and_alias_arguments_complete_paths", "commands.rs::no_path_completion_for_quoted_or_glob_arguments"]
+
+# ---------------------------------------------------------------- 6 Aliases
+
+[[requirement]]
+id = "ALI-01"
+section = "6 Aliases"
+title = ":alias NAME PATH creates, :unalias NAME removes, :alias alone lists"
+status = "implemented"
+tests = ["commands.rs::alias_command_creates_and_the_alias_works", "commands.rs::alias_command_updates_an_existing_alias", "commands.rs::unalias_removes_and_reports_missing", "commands.rs::alias_alone_lists_them"]
+
+[[requirement]]
+id = "ALI-02"
+section = "6 Aliases"
+title = "Aliases compose with subpaths and globs (proj/sub, dl/*.pdf)"
+status = "implemented"
+tests = ["commands.rs::alias_composes_with_subpaths_and_navigates", "commands.rs::glob_works_through_an_alias_prefix"]
+
+[[requirement]]
+id = "ALI-03"
+section = "6 Aliases"
+title = "An alias in use shows a visible alias mode chip"
+status = "partial"
+tests = ["commands.rs::typing_an_alias_previews_its_target_then_goes_there"]
+note = "the core reports the alias in use; the chip itself is drawn by the egui front end and not asserted by a test"
+
+[[requirement]]
+id = "ALI-04"
+section = "6 Aliases"
+title = "Alias names are validated (one segment; no * ? . spaces; no leading : or ~)"
+status = "implemented"
+tests = ["commands.rs::alias_names_are_validated", "unit:names::tests::alias_names"]
+
+[[requirement]]
+id = "ALI-05"
+section = "6 Aliases"
+title = "An alias target is validated at creation: it must be an existing folder"
+status = "implemented"
+tests = ["commands.rs::alias_target_must_be_an_existing_folder"]
+
+[[requirement]]
+id = "ALI-06"
+section = "6 Aliases"
+title = "A dangling alias target at use time gets its own message naming :unalias"
+status = "implemented"
+tests = ["commands.rs::a_dangling_alias_gets_its_own_message"]
+
+[[requirement]]
+id = "ALI-07"
+section = "6 Aliases"
+title = "An alias beats a real folder of the same name, and the bar says so"
+status = "implemented"
+tests = ["commands.rs::an_alias_shadows_a_real_folder_and_says_so"]
+
+[[requirement]]
+id = "ALI-08"
+section = "6 Aliases"
+title = "Aliases persist across sessions"
+status = "implemented"
+tests = ["persistence.rs::aliases_survive_a_restart", "persistence.rs::unalias_is_persisted_too", "bar.rs::aliases_and_history_survive_a_restart_through_a_real_settings_file"]
+
+[[requirement]]
+id = "ALI-09"
+section = "6 Aliases"
+title = "A name that is exactly an alias previews its target as you type"
+status = "implemented"
+tests = ["commands.rs::typing_an_alias_previews_its_target_then_goes_there"]
+
+# ---------------------------------------------------------------- 7 Glob filtering
+
+[[requirement]]
+id = "FLT-01"
+section = "7 Glob filtering"
+title = "* and ? filter the folder live, case-insensitively, on every keystroke"
+status = "implemented"
+tests = ["unit:glob::tests::star_and_question", "unit:glob::tests::unicode_folds", "keystrokes.rs::glob_filter_keeps_the_folder_in_view"]
+
+[[requirement]]
+id = "FLT-02"
+section = "7 Glob filtering"
+title = "A path before the glob selects the folder (~/Downloads/*.pdf)"
+status = "implemented"
+tests = ["completion.rs::glob_selects_folder_by_path_prefix", "keystrokes.rs::glob_filter_keeps_the_folder_in_view"]
+
+[[requirement]]
+id = "FLT-03"
+section = "7 Glob filtering"
+title = "A filter chip marks the mode; the status shows the path and the match counts"
+status = "partial"
+tests = ["keystrokes.rs::glob_filter_keeps_the_folder_in_view", "bar.rs::glob_filter_shows_the_folder_path_in_the_status_line"]
+note = "path and counts are asserted; the chip is drawn by the egui front end"
+
+[[requirement]]
+id = "FLT-04"
+section = "7 Glob filtering"
+title = "Esc clears the filter and restores the full listing"
+status = "implemented"
+tests = ["keystrokes.rs::escape_clears_a_filter_and_restores_the_listing"]
+
+[[requirement]]
+id = "FLT-05"
+section = "7 Glob filtering"
+title = "Filtering composes with sorting and hidden-file visibility"
+status = "implemented"
+tests = ["commands.rs::sorting_survives_filters_and_hidden_toggles"]
+
+[[requirement]]
+id = "FLT-06"
+section = "7 Glob filtering"
+title = "Ctrl+A selects all filtered rows"
+status = "implemented"
+tests = ["fileops.rs::shift_arrows_extend_and_select_all_takes_what_is_shown"]
+
+[[requirement]]
+id = "FLT-07"
+section = "7 Glob filtering"
+title = "Enter with a filter keeps the filter active"
+status = "implemented"
+tests = ["keystrokes.rs::enter_with_a_filter_keeps_the_filter"]
+
+[[requirement]]
+id = "FLT-08"
+section = "7 Glob filtering"
+title = "A literal * or ? in a file name can be escaped with backslash (Unix)"
+status = "planned"
+milestone = "M4"
+
+# ---------------------------------------------------------------- 8 Commands
+
+[[requirement]]
+id = "CMD-01"
+section = "8 Commands"
+title = ":sort name|size|date [asc|desc], folders first, ties by name"
+status = "implemented"
+tests = ["commands.rs::sort_by_size_descending_keeps_folders_first", "commands.rs::sort_commands_and_direction_rules", "commands.rs::name_sort_descending_and_ties", "unit:command::tests::sort"]
+
+[[requirement]]
+id = "CMD-02"
+section = "8 Commands"
+title = ":asc and :desc flip the direction"
+status = "implemented"
+tests = ["commands.rs::sort_commands_and_direction_rules"]
+
+[[requirement]]
+id = "CMD-03"
+section = "8 Commands"
+title = ":hidden toggles hidden-file visibility"
+status = "implemented"
+tests = ["commands.rs::sorting_survives_filters_and_hidden_toggles"]
+
+[[requirement]]
+id = "CMD-04"
+section = "8 Commands"
+title = ":cd PATH navigates (aliases and unquoted spaces work)"
+status = "implemented"
+tests = ["commands.rs::cd_navigates_with_unquoted_spaces_and_aliases"]
+
+[[requirement]]
+id = "CMD-05"
+section = "8 Commands"
+title = ":back and :fwd walk the history (also Alt+Left and Alt+Right)"
+status = "implemented"
+tests = ["commands.rs::back_and_forward_walk_the_history", "commands.rs::navigating_after_going_back_drops_the_forward_history", "commands.rs::revisiting_the_same_folder_does_not_grow_the_history", "bar.rs::commands_run_and_alt_arrows_walk_the_history"]
+
+[[requirement]]
+id = "CMD-06"
+section = "8 Commands"
+title = ":mkdir NAME and :touch NAME create in the current folder; collisions are rejected"
+status = "implemented"
+tests = ["fileops.rs::mkdir_creates_selects_and_is_undoable", "fileops.rs::touch_creates_an_empty_file_and_reports_collisions", "fileops.rs::create_ignores_the_selection_and_the_highlight"]
+
+[[requirement]]
+id = "CMD-07"
+section = "8 Commands"
+title = ":rename NEWNAME renames the one selected entry"
+status = "implemented"
+tests = ["fileops.rs::rename_the_selected_entry_and_undo_it", "fileops.rs::rename_needs_exactly_one_selected_entry", "fileops.rs::rename_collisions_and_case_only_changes", "fileops.rs::renaming_a_folder_keeps_its_contents"]
+
+[[requirement]]
+id = "CMD-08"
+section = "8 Commands"
+title = ":rm moves the selection to the trash"
+status = "implemented"
+tests = ["fileops.rs::rm_moves_the_selection_to_the_trash_and_undo_restores_it", "fileops.rs::rm_a_folder_and_undo_brings_everything_back", "fileops.rs::the_delete_key_trashes_the_selection"]
+
+[[requirement]]
+id = "CMD-09"
+section = "8 Commands"
+title = ":rm! deletes permanently, and always asks first (Enter confirms, Esc cancels)"
+status = "implemented"
+tests = ["fileops.rs::permanent_delete_asks_first", "fileops.rs::permanent_delete_runs_on_confirmation_and_cannot_be_undone", "fileops.rs::typing_is_not_a_yes_to_a_pending_delete"]
+
+[[requirement]]
+id = "CMD-10"
+section = "8 Commands"
+title = ":copy, :cut and :paste work on the selection"
+status = "implemented"
+tests = ["fileops.rs::copy_then_paste_into_another_folder_leaves_the_original", "fileops.rs::cut_then_paste_moves_and_the_clipboard_is_used_up", "fileops.rs::copying_nothing_is_an_error", "fileops.rs::paste_with_an_empty_clipboard_is_an_error"]
+
+[[requirement]]
+id = "CMD-11"
+section = "8 Commands"
+title = ":open opens the selection with the OS default handler"
+status = "planned"
+milestone = "M2"
+
+[[requirement]]
+id = "CMD-12"
+section = "8 Commands"
+title = ":undo and :redo"
+status = "implemented"
+tests = ["fileops.rs::undo_and_redo_walk_a_sequence_of_operations", "fileops.rs::a_new_action_ends_the_redo_history"]
+
+[[requirement]]
+id = "CMD-13"
+section = "8 Commands"
+title = ":help gives a one-line reminder of every command"
+status = "implemented"
+tests = ["commands.rs::help_is_one_line_and_mentions_everything"]
+
+[[requirement]]
+id = "CMD-14"
+section = "8 Commands"
+title = ":log shows recent operations"
+status = "implemented"
+tests = ["fileops.rs::log_lists_recent_operations"]
+
+[[requirement]]
+id = "CMD-15"
+section = "8 Commands"
+title = "Arguments: whitespace-separated, double quotes group, backslash-quote escapes, other backslashes literal"
+status = "implemented"
+tests = ["unit:command::tests::quotes_group_and_escape", "unit:command::tests::backslashes_are_literal_except_before_a_quote", "commands.rs::alias_command_accepts_paths_with_spaces_and_quotes"]
+
+[[requirement]]
+id = "CMD-16"
+section = "8 Commands"
+title = "Commands with one free-text argument (:cd :mkdir :touch :rename) take the rest of the line"
+status = "implemented"
+tests = ["unit:command::tests::free_text_commands_take_the_rest_of_the_line", "commands.rs::cd_navigates_with_unquoted_spaces_and_aliases"]
+
+[[requirement]]
+id = "CMD-17"
+section = "8 Commands"
+title = "Unknown commands and bad arguments give a friendly error with usage, never a crash"
+status = "implemented"
+tests = ["commands.rs::parser_errors_are_friendly_and_keep_the_text", "unit:command::tests::missing_arguments_are_usage_errors", "unit:command::tests::unknown_and_empty", "keystrokes.rs::enter_on_any_command_never_crashes_or_moves"]
+
+[[requirement]]
+id = "CMD-18"
+section = "8 Commands"
+title = "A successful command returns the bar to the idle path; an error keeps the text so it can be fixed"
+status = "implemented"
+tests = ["commands.rs::successful_commands_return_to_the_idle_bar", "commands.rs::parser_errors_are_friendly_and_keep_the_text"]
+
+[[requirement]]
+id = "CMD-19"
+section = "8 Commands"
+title = "Command words are case-insensitive"
+status = "implemented"
+tests = ["unit:command::tests::no_argument_commands"]
+
+[[requirement]]
+id = "FUZ-01"
+section = "8 Commands"
+title = "The bar parser is fuzz-tested: no input panics"
+status = "planned"
+milestone = "M1"
+
+[[requirement]]
+id = "SRT-01"
+section = "8 Commands"
+title = "Folders always sort before files; the direction applies within each group"
+status = "implemented"
+tests = ["commands.rs::sort_by_size_descending_keeps_folders_first", "commands.rs::name_sort_descending_and_ties", "commands.rs::sorting_100k_entries_works"]
+
+[[requirement]]
+id = "SRT-02"
+section = "8 Commands"
+title = "Clicking a column header sorts by it, and clicking again flips the direction"
+status = "implemented"
+tests = ["commands.rs::clicking_a_column_header_sorts_and_flips"]
+
+# ---------------------------------------------------------------- 8.2 Name validation
+
+[[requirement]]
+id = "NAM-01"
+section = "8.2 Name validation"
+title = "Empty names, . and .., separators and NUL are rejected everywhere"
+status = "implemented"
+tests = ["unit:names::tests::universal_rejections"]
+
+[[requirement]]
+id = "NAM-02"
+section = "8.2 Name validation"
+title = "Windows: no < > : \" | ? *, no control characters, no trailing space or dot"
+status = "implemented"
+tests = ["unit:names::tests::windows_only_rejections", "commands.rs::file_commands_validate_names_by_platform"]
+
+[[requirement]]
+id = "NAM-03"
+section = "8.2 Name validation"
+title = "Windows: reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9), with or without an extension"
+status = "implemented"
+tests = ["unit:names::tests::reserved_device_names"]
+
+[[requirement]]
+id = "NAM-04"
+section = "8.2 Name validation"
+title = "Unix allows what Windows forbids, except separators and dot names"
+status = "implemented"
+tests = ["commands.rs::unix_rules_allow_what_windows_forbids", "unit:names::tests::ordinary_names_pass"]
+
+[[requirement]]
+id = "NAM-05"
+section = "8.2 Name validation"
+title = "Collision checks follow the filesystem's case rule, with a specific message each"
+status = "implemented"
+tests = ["fileops.rs::touch_creates_an_empty_file_and_reports_collisions", "fileops.rs::case_sensitive_filesystems_allow_names_that_differ_only_by_case", "fileops.rs::rename_collisions_and_case_only_changes"]
+
+# ---------------------------------------------------------------- 9 File operations
+
+[[requirement]]
+id = "SEL-01"
+section = "9 File operations"
+title = "Destructive operations act only on the explicit selection, never on the completion highlight"
+status = "implemented"
+tests = ["fileops.rs::only_the_selection_is_ever_deleted_never_the_highlight", "keystrokes.rs::selection_is_separate_from_the_completion_highlight"]
+
+[[requirement]]
+id = "SEL-02"
+section = "9 File operations"
+title = "Multi-select: Ctrl+click toggles, Shift+click and Shift+arrows extend, Ctrl+A takes everything shown"
+status = "implemented"
+tests = ["fileops.rs::click_modifiers_toggle_and_extend", "fileops.rs::shift_arrows_extend_and_select_all_takes_what_is_shown"]
+
+[[requirement]]
+id = "SEL-03"
+section = "9 File operations"
+title = "The selection clears when the list changes"
+status = "implemented"
+tests = ["fileops.rs::the_selection_clears_when_the_list_changes", "keystrokes.rs::changing_the_listing_resets_the_selection", "keystrokes.rs::navigating_resets_the_selection"]
+
+[[requirement]]
+id = "SEL-04"
+section = "9 File operations"
+title = "The status line states the selection count and total size"
+status = "partial"
+tests = ["fileops.rs::shift_arrows_extend_and_select_all_takes_what_is_shown"]
+note = "the count is shown; the total size of the selection is not"
+
+[[requirement]]
+id = "SEL-05"
+section = "9 File operations"
+title = "Typing the path of a file selects it in its folder"
+status = "implemented"
+tests = ["keystrokes.rs::enter_on_a_file_selects_it_in_its_folder"]
+
+[[requirement]]
+id = "OPN-01"
+section = "9 File operations"
+title = "Enter opens the selected row (folder: navigate; file: default handler), from the bar too when the text is unchanged since the arrow keys selected it"
+status = "planned"
+milestone = "M1"
+
+[[requirement]]
+id = "REN-01"
+section = "9 File operations"
+title = "F2 renames inline in the name cell (basename pre-selected; Enter commits, Esc reverts)"
+status = "planned"
+milestone = "M3"
+
+[[requirement]]
+id = "CLP-01"
+section = "9 File operations"
+title = "Pasting into a folder with a colliding name renames the copy: name (2) before the extension"
+status = "implemented"
+tests = ["fileops.rs::pasting_into_a_folder_with_the_same_name_renames_the_copy", "unit:fileops::tests::unique_names"]
+
+[[requirement]]
+id = "CLP-02"
+section = "9 File operations"
+title = "Cut then paste moves the item and uses up the clipboard; a copy can be pasted again"
+status = "implemented"
+tests = ["fileops.rs::cut_then_paste_moves_and_the_clipboard_is_used_up", "fileops.rs::copy_then_paste_into_another_folder_leaves_the_original", "fileops.rs::cutting_into_the_folder_it_is_already_in_does_nothing"]
+
+[[requirement]]
+id = "CLP-03"
+section = "9 File operations"
+title = "A folder can never be copied or moved into itself or one of its descendants"
+status = "implemented"
+tests = ["fileops.rs::a_folder_can_never_be_pasted_into_itself", "memfs_write.rs::copy_and_move_refuse_to_go_inside_themselves"]
+
+[[requirement]]
+id = "CLP-04"
+section = "9 File operations"
+title = "Renaming a cut or copied item updates the clipboard instead of duplicating or losing it"
+status = "implemented"
+tests = ["fileops.rs::renaming_a_clipboard_item_updates_the_clipboard", "unit:fileops::tests::clipboard_follows_renames"]
+
+[[requirement]]
+id = "CLP-05"
+section = "9 File operations"
+title = "A source that was deleted after copying is reported, never resurrected"
+status = "implemented"
+tests = ["fileops.rs::a_deleted_source_is_reported_not_resurrected"]
+
+[[requirement]]
+id = "CLP-06"
+section = "9 File operations"
+title = "A persistent status-bar indicator shows the clipboard operation and item"
+status = "partial"
+tests = ["fileops.rs::cut_then_paste_moves_and_the_clipboard_is_used_up", "fileops.rs::pasting_several_items_selects_them_all"]
+note = "the core reports the summary (Copied x, Cut 3 items); the chip is drawn by the egui front end and not asserted"
+
+[[requirement]]
+id = "CLP-07"
+section = "9 File operations"
+title = "The clipboard is the real system clipboard (CF_HDROP): copy in NoCrumbs, paste in Explorer, and back"
+status = "planned"
+milestone = "M2"
+
+[[requirement]]
+id = "CLP-08"
+section = "9 File operations"
+title = "Ctrl+C/X/V act on files when the list has focus and on text when the bar has focus"
+status = "implemented"
+tests = ["fileops.rs::clipboard_keys_work_from_the_list", "bar.rs::list_keys_work_once_the_bar_has_given_up_focus", "bar.rs::while_the_bar_has_focus_ctrl_keys_edit_text_not_files"]
+
+[[requirement]]
+id = "TRS-01"
+section = "9 File operations"
+title = "Delete uses the real Recycle Bin (trash) on the platform"
+status = "planned"
+milestone = "M2"
+
+[[requirement]]
+id = "UND-01"
+section = "9 File operations"
+title = "Create, rename, move, paste and trash are undoable and redoable"
+status = "implemented"
+tests = ["fileops.rs::undo_and_redo_walk_a_sequence_of_operations", "fileops.rs::mkdir_creates_selects_and_is_undoable", "fileops.rs::rm_moves_the_selection_to_the_trash_and_undo_restores_it", "fileops.rs::cut_then_paste_moves_and_the_clipboard_is_used_up"]
+
+[[requirement]]
+id = "UND-02"
+section = "9 File operations"
+title = "The undo stack is at least 20 deep"
+status = "implemented"
+tests = ["fileops.rs::the_undo_stack_is_at_least_twenty_deep"]
+
+[[requirement]]
+id = "UND-03"
+section = "9 File operations"
+title = "Undo never deletes for good, and one undo reverses a whole multi-item action"
+status = "implemented"
+tests = ["fileops.rs::pasting_several_items_selects_them_all", "memfs_write.rs::trash_and_restore_a_folder_with_everything_in_it"]
+
+[[requirement]]
+id = "UND-04"
+section = "9 File operations"
+title = "If the world changed underneath an undo, it says so and leaves the step undoable"
+status = "implemented"
+tests = ["fileops.rs::undo_reports_when_the_world_has_changed_underneath_it", "memfs_write.rs::restore_fails_cleanly_when_the_spot_is_taken_or_gone"]
+
+[[requirement]]
+id = "UND-05"
+section = "9 File operations"
+title = "Permanent deletes are not undoable"
+status = "implemented"
+tests = ["fileops.rs::permanent_delete_runs_on_confirmation_and_cannot_be_undone"]
+
+[[requirement]]
+id = "ASY-01"
+section = "9 File operations"
+title = "Copies, moves and deletes run on a worker thread with progress and cancel"
+status = "planned"
+milestone = "M2"
+
+[[requirement]]
+id = "ASY-02"
+section = "9 File operations"
+title = "Failures are reported per item with a retry or skip choice; long paths are supported"
+status = "planned"
+milestone = "M2"
+
+# ---------------------------------------------------------------- 10 Keyboard
+
+[[requirement]]
+id = "KEY-01"
+section = "10 Keyboard"
+title = "/ or Ctrl+L focuses the bar from anywhere"
+status = "partial"
+tests = ["bar.rs::list_keys_work_once_the_bar_has_given_up_focus"]
+note = "/ is tested; Ctrl+L is implemented but not asserted"
+
+[[requirement]]
+id = "KEY-02"
+section = "10 Keyboard"
+title = "The first keystroke after focusing the bar replaces its whole content"
+status = "implemented"
+tests = ["keystrokes.rs::starts_on_home_with_everything_selected", "bar.rs::starts_on_home_with_everything_selected", "keystrokes.rs::enter_navigates_to_the_completed_text"]
+
+[[requirement]]
+id = "KEY-03"
+section = "10 Keyboard"
+title = "Tab accepts the completion and never moves focus out of the bar"
+status = "implemented"
+tests = ["bar.rs::tab_accepts_canonical_case_and_descends", "keystrokes.rs::tab_with_nothing_to_complete_changes_nothing"]
+
+[[requirement]]
+id = "KEY-04"
+section = "10 Keyboard"
+title = "Up and Down move the row selection from the bar, wrapping"
+status = "implemented"
+tests = ["keystrokes.rs::arrow_keys_move_the_selection_and_wrap", "bar.rs::arrow_keys_move_the_selection_and_wrap"]
+
+[[requirement]]
+id = "KEY-05"
+section = "10 Keyboard"
+title = "Alt+Left and Alt+Right go back and forward in the history"
+status = "implemented"
+tests = ["bar.rs::commands_run_and_alt_arrows_walk_the_history", "commands.rs::back_and_forward_walk_the_history"]
+
+[[requirement]]
+id = "KEY-06"
+section = "10 Keyboard"
+title = "Backspace in the list goes up one folder"
+status = "implemented"
+tests = ["fileops.rs::backspace_in_the_list_goes_up_one_folder", "bar.rs::list_keys_work_once_the_bar_has_given_up_focus"]
+
+[[requirement]]
+id = "KEY-07"
+section = "10 Keyboard"
+title = "F2 rename"
+status = "planned"
+milestone = "M3"
+
+[[requirement]]
+id = "KEY-08"
+section = "10 Keyboard"
+title = "Del recycles; Shift+Del deletes permanently after confirming"
+status = "partial"
+tests = ["fileops.rs::the_delete_key_trashes_the_selection"]
+note = "Del is implemented; Shift+Del is not bound (use :rm!)"
+
+[[requirement]]
+id = "KEY-09"
+section = "10 Keyboard"
+title = "Ctrl+Z and Ctrl+Y undo and redo; Ctrl+A selects all (in the list)"
+status = "implemented"
+tests = ["bar.rs::list_keys_work_once_the_bar_has_given_up_focus", "fileops.rs::the_delete_key_trashes_the_selection"]
+
+[[requirement]]
+id = "KEY-10"
+section = "10 Keyboard"
+title = "Esc is staged: remove the ghost, then clear the filter and revert the bar, then deselect, then blur"
+status = "partial"
+tests = ["keystrokes.rs::escape_is_staged", "bar.rs::escape_is_staged", "keystrokes.rs::escape_clears_a_filter_and_restores_the_listing"]
+note = "ghost, revert and blur are tested in the core; clearing the selection on Esc is done by the egui front end and not asserted"
+
+# ---------------------------------------------------------------- 11 Visual direction
+
+[[requirement]]
+id = "VIS-01"
+section = "11 Visual direction"
+title = "Three distinct row states: selection, completion highlight, hover"
+status = "partial"
+tests = ["keystrokes.rs::selection_is_separate_from_the_completion_highlight"]
+note = "selection and highlight are separate states in the core and drawn differently; hover is egui's, and the look has not been reviewed on screen"
+
+[[requirement]]
+id = "VIS-02"
+section = "11 Visual direction"
+title = "The current path is visible at all times: in the bar when idle and always in the status line"
+status = "implemented"
+tests = ["keystrokes.rs::glob_filter_keeps_the_folder_in_view", "bar.rs::glob_filter_shows_the_folder_path_in_the_status_line"]
+
+[[requirement]]
+id = "VIS-03"
+section = "11 Visual direction"
+title = "Mode chips (filter, alias, command) appear on the bar"
+status = "manual"
+note = "drawn by the egui front end; check by eye that the chip matches the mode while typing (spike checklist)"
+
+[[requirement]]
+id = "VIS-04"
+section = "11 Visual direction"
+title = "Dark theme with accent purple; light theme follows the OS"
+status = "partial"
+tests = ["bar.rs::starts_on_home_with_everything_selected"]
+note = "the spike is dark only; light-follows-OS is not built"
+
+[[requirement]]
+id = "VIS-05"
+section = "11 Visual direction"
+title = "Window title is NoCrumbs - <current path>; native window chrome"
+status = "planned"
+milestone = "M2"
+
+[[requirement]]
+id = "VIS-06"
+section = "11 Visual direction"
+title = "Colour is never the only signal; a dismissible key-hint strip replaces the permanent hint"
+status = "planned"
+milestone = "M3"
+
+# ---------------------------------------------------------------- 12 Performance and responsiveness
+
+[[requirement]]
+id = "PRF-01"
+section = "12 Performance"
+title = "Directory listings are read asynchronously with cancellation; stale results are discarded"
+status = "planned"
+milestone = "M2"
+
+[[requirement]]
+id = "PRF-02"
+section = "12 Performance"
+title = "A 100,000-entry folder lists, scrolls, completes and filters"
+status = "implemented"
+tests = ["keystrokes.rs::big_folder_completes_and_filters", "bar.rs::big_folder_100k_completes_and_filters", "commands.rs::sorting_100k_entries_works", "fileops.rs::file_operations_in_a_100k_folder", "completion.rs::big_folder_completion_is_correct"]
+
+[[requirement]]
+id = "PRF-03"
+section = "12 Performance"
+title = "Keystroke to repaint takes at most 16 ms for folders up to 10k entries"
+status = "manual"
+note = "measured by `cargo test -p m0-ghost-bar --profile perf --test bar perf_100k -- --ignored --nocapture`: 6-9 ms typing and about 13 ms per glob keystroke at 100k, headless layout only; real-GPU numbers are not measured"
+
+[[requirement]]
+id = "PRF-04"
+section = "12 Performance"
+title = "Filtering works over the cached listing, incrementally, without re-reading the folder"
+status = "partial"
+tests = ["keystrokes.rs::big_folder_completes_and_filters"]
+note = "filters over the cached listing; narrowing the previous result instead of rescanning is not done"
+
+[[requirement]]
+id = "PRF-05"
+section = "12 Performance"
+title = "Directories are watched for changes and the list updates live, keeping the selection"
+status = "planned"
+milestone = "M2"
+
+[[requirement]]
+id = "PRF-06"
+section = "12 Performance"
+title = "Cold start to first painted listing within 150 ms; navigation to a cached folder within 50 ms"
+status = "planned"
+milestone = "M3"
+
+# ---------------------------------------------------------------- 13 Accessibility and input
+
+[[requirement]]
+id = "ACC-01"
+section = "13 Accessibility and input"
+title = "The bar, list and status line are exposed to screen readers (AccessKit)"
+status = "manual"
+note = "check with Narrator or NVDA: the bar is announced as an edit field with its text, rows are reachable and announced, the status line is read (spike checklist, still open)"
+
+[[requirement]]
+id = "ACC-02"
+section = "13 Accessibility and input"
+title = "Everything is operable by keyboard alone, with a visible focus indicator"
+status = "partial"
+tests = ["keystrokes.rs::enter_navigates_to_the_completed_text", "fileops.rs::clipboard_keys_work_from_the_list", "bar.rs::list_keys_work_once_the_bar_has_given_up_focus"]
+note = "navigation and file operations work without the mouse; opening the selected row from a filter (OPN-01) and F2 rename do not yet"
+
+[[requirement]]
+id = "ACC-03"
+section = "13 Accessibility and input"
+title = "IME composition works in the bar"
+status = "partial"
+tests = ["keystrokes.rs::composition_suppresses_completion", "bar.rs::composition_suppresses_completion"]
+note = "completion is suppressed during composition (tested through egui's IME events); a real IME on a real window is unchecked (spike checklist)"
+
+[[requirement]]
+id = "ACC-04"
+section = "13 Accessibility and input"
+title = "Full Unicode names are matched, shown and never rewritten on disk"
+status = "partial"
+tests = ["unit:glob::tests::unicode_folds", "store.rs::unusual_alias_targets_survive_a_round_trip"]
+note = "matching and storage handle Unicode; the default egui fonts draw tofu for scripts they lack, so a font fallback stack is needed (M2)"
+
+[[requirement]]
+id = "ACC-05"
+section = "13 Accessibility and input"
+title = "High-contrast mode, OS text scaling and reduced motion are respected"
+status = "planned"
+milestone = "M3"
+
+# ---------------------------------------------------------------- 16 Testing
+
+[[requirement]]
+id = "TST-01"
+section = "16 Testing"
+title = "Behaviour is specified as keystroke scripts against the headless core and the in-memory filesystem"
+status = "implemented"
+tests = ["keystrokes.rs::ghost_text_is_appended_and_selected", "commands.rs::successful_commands_return_to_the_idle_bar", "fileops.rs::mkdir_creates_selects_and_is_undoable", "persistence.rs::aliases_survive_a_restart"]
+
+[[requirement]]
+id = "TST-02"
+section = "16 Testing"
+title = "Every bug found in the HTML concept sketch is a regression test"
+status = "implemented"
+tests = [
+  "keystrokes.rs::backspace_removes_the_ghost_and_does_not_reoffer_it",
+  "keystrokes.rs::command_arguments_can_be_typed_in_full",
+  "completion.rs::tab_rewrites_to_canonical_case",
+  "keystrokes.rs::tab_accepts_canonical_case_and_descends",
+  "fileops.rs::a_folder_can_never_be_pasted_into_itself",
+  "keystrokes.rs::glob_filter_keeps_the_folder_in_view",
+]
+
+# ---------------------------------------------------------------- Persistence and settings
+
+[[requirement]]
+id = "CFG-01"
+section = "Persistence and settings"
+title = "Settings are saved atomically (temporary file, then replace) and the folder is created"
+status = "implemented"
+tests = ["store.rs::saving_creates_the_folder_and_leaves_no_temp_file", "store.rs::saving_replaces_the_previous_contents", "store.rs::save_then_load_round_trips_aliases_and_frecency"]
+
+[[requirement]]
+id = "CFG-02"
+section = "Persistence and settings"
+title = "A damaged settings file is set aside as .bad, never overwritten, and the user is told"
+status = "implemented"
+tests = ["store.rs::a_damaged_file_is_set_aside_not_overwritten", "store.rs::a_file_of_the_wrong_shape_counts_as_damaged", "persistence.rs::a_recovered_damaged_file_is_announced"]
+
+[[requirement]]
+id = "CFG-03"
+section = "Persistence and settings"
+title = "A settings file from a newer version is refused and left untouched"
+status = "implemented"
+tests = ["store.rs::a_newer_version_is_refused_and_left_untouched", "persistence.rs::a_store_that_cannot_load_is_not_written_to"]
+
+[[requirement]]
+id = "CFG-04"
+section = "Persistence and settings"
+title = "A failing disk is reported once and the bar keeps working in memory"
+status = "implemented"
+tests = ["persistence.rs::a_failing_disk_is_reported_once_and_the_bar_keeps_working"]
+
+[[requirement]]
+id = "CFG-05"
+section = "Persistence and settings"
+title = "Frecency survives restarts, follows renames, is capped, and never offers what no longer exists"
+status = "implemented"
+tests = ["persistence.rs::navigation_history_survives_a_restart_and_keeps_ranking", "persistence.rs::renaming_persists_the_carried_history", "persistence.rs::history_never_offers_something_that_is_gone", "store.rs::frecency_beyond_the_cap_is_trimmed_on_load", "unit:frecency::tests::retention_cap_drops_the_weakest"]
+
+[[requirement]]
+id = "CFG-06"
+section = "Persistence and settings"
+title = "Unknown keys are ignored and invalid alias names skipped when loading; a missing version means 1"
+status = "implemented"
+tests = ["store.rs::unknown_keys_are_ignored_and_invalid_alias_names_skipped", "store.rs::a_file_without_a_version_is_read_as_version_one"]
+
+# ---------------------------------------------------------------- Acceptance criteria (brief section 15)
+
+[[acceptance]]
+n = 1
+text = "From launch to any nested folder requires only typing + Enter (+Tab), no mouse, including after using a filter"
+requires = ["BAR-03", "CMP-05", "CMP-12", "FLT-04"]
+
+[[acceptance]]
+n = 2
+text = "Ghost text never alters typed characters; Backspace on ghost deletes it without re-offering; the first keystroke after focusing the bar replaces all"
+requires = ["CMP-02", "CMP-06", "KEY-02"]
+
+[[acceptance]]
+n = 3
+text = "Typing a partial name highlights the matching row in the same frame; Tab on a directory offers the next level immediately"
+requires = ["CMP-03", "CMP-05"]
+
+[[acceptance]]
+n = 4
+text = "Alias, filter, command and path input are disambiguated deterministically, with a visible mode chip"
+requires = ["BAR-01", "VIS-03"]
+
+[[acceptance]]
+n = 5
+text = "Command arguments (:mkdir \"a b\", :alias p ~/x, :cd C:\\Windows) can be typed in full without placeholder interference"
+requires = ["CMP-09", "CMD-15", "CMD-16", "BAR-05"]
+
+[[acceptance]]
+n = 6
+text = "Every command in section 8 works; every key in section 10 works; nothing panics on invalid input (fuzz-tested parser)"
+requires = [
+  "CMD-01", "CMD-02", "CMD-03", "CMD-04", "CMD-05", "CMD-06", "CMD-07", "CMD-08", "CMD-09", "CMD-10",
+  "CMD-11", "CMD-12", "CMD-13", "CMD-14", "CMD-17", "FUZ-01",
+  "KEY-01", "KEY-02", "KEY-03", "KEY-04", "KEY-05", "KEY-06", "KEY-07", "KEY-08", "KEY-09", "KEY-10",
+]
+
+[[acceptance]]
+n = 7
+text = "Sorting is stable, folders-first, and survives filter and hidden toggles"
+requires = ["CMD-01", "SRT-01", "FLT-05"]
+
+[[acceptance]]
+n = 8
+text = "Cut/paste across folders moves the item; collisions auto-rename; moving a folder into itself is rejected; the clipboard interoperates with Explorer in both directions"
+requires = ["CLP-01", "CLP-02", "CLP-03", "CLP-07"]
+
+[[acceptance]]
+n = 9
+text = "Delete goes to the Recycle Bin and Ctrl+Z restores it"
+requires = ["CMD-08", "UND-01", "TRS-01"]
+
+[[acceptance]]
+n = 10
+text = "The current path is visible at all times (bar, status line, title)"
+requires = ["VIS-02", "VIS-05"]
+
+[[acceptance]]
+n = 11
+text = "Single nocrumbs.exe, no installer, runs with no config present, at most 10 MB, within the startup and keystroke budgets"
+requires = ["DST-05", "DST-06", "PRF-03", "PRF-06"]
+
+[[acceptance]]
+n = 12
+text = "Behaviour in sections 4-10 is covered by automated keystroke-script tests against the core and the in-memory filesystem"
+requires = ["TST-01", "TST-02"]

@@ -2,14 +2,23 @@
 //! The first keystroke-style cases. Each one is a regression for a bug found in the
 //! original HTML concept sketch (see ROADMAP.md, progress log).
 
-use nocrumbs_core::{Aliases, Analysis, BarContext, Mode, analyze, display_path, resolve};
+use nocrumbs_core::{Aliases, Analysis, BarContext, Frecency, Mode, analyze, display_path, resolve};
 use nocrumbs_testfs::MemFs;
 
 const HOME: &str = "/home/user";
 
 fn typed(input: &str, ci: bool) -> Analysis {
     let fs = MemFs::sample(ci, 1_000);
-    let c = BarContext { fs: &fs, aliases: &Aliases::new(), cwd: HOME, home: HOME, sep: '/', show_hidden: false };
+    let c = BarContext {
+        fs: &fs,
+        aliases: &Aliases::new(),
+        frecency: &Frecency::new(),
+        now: 0,
+        cwd: HOME,
+        home: HOME,
+        sep: '/',
+        show_hidden: false,
+    };
     analyze(input, &c)
 }
 
@@ -131,7 +140,16 @@ fn glob_selects_folder_by_path_prefix() {
 #[test]
 fn resolves_existing_paths_and_reports_missing_ones() {
     let fs = MemFs::sample(true, 100);
-    let c = BarContext { fs: &fs, aliases: &Aliases::new(), cwd: HOME, home: HOME, sep: '/', show_hidden: false };
+    let c = BarContext {
+        fs: &fs,
+        aliases: &Aliases::new(),
+        frecency: &Frecency::new(),
+        now: 0,
+        cwd: HOME,
+        home: HOME,
+        sep: '/',
+        show_hidden: false,
+    };
     let r = resolve("documents/RECIPES", &c).expect("case-insensitive");
     assert_eq!((r.path.as_str(), r.is_dir), ("/home/user/Documents/recipes", true));
     let r = resolve("Documents/resume.docx", &c).unwrap();
@@ -147,7 +165,16 @@ fn resolves_existing_paths_and_reports_missing_ones() {
 #[test]
 fn big_folder_completion_is_correct() {
     let fs = MemFs::sample(true, 100_000);
-    let c = BarContext { fs: &fs, aliases: &Aliases::new(), cwd: HOME, home: HOME, sep: '/', show_hidden: false };
+    let c = BarContext {
+        fs: &fs,
+        aliases: &Aliases::new(),
+        frecency: &Frecency::new(),
+        now: 0,
+        cwd: HOME,
+        home: HOME,
+        sep: '/',
+        show_hidden: false,
+    };
     let a = analyze("/big/report-0999", &c);
     let comp = a.completion.expect("completion");
     // Alphabetically first existing report-0999NN.pdf: i % 3 == 0, and i % 20 != 0 (those are folders).

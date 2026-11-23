@@ -1,6 +1,6 @@
 # NoCrumbs roadmap
 
-Last reviewed: 2026-11-20 | Last updated: 2026-11-20 | Change: workspace and M0 spike built; automated checks pass; IME and screen-reader checks still open; estimates unchanged
+Last reviewed: 2026-11-23 | Last updated: 2026-11-23 | Change: requirements spec with a checker (`cargo xtask spec`); aliases and frecency persist; estimates unchanged
 
 One-page summary of where NoCrumbs is, what comes next, and what could go wrong. NoCrumbs is a native Rust/egui single-exe file explorer driven by one address bar (Windows first, then Linux, then macOS). The *what* is in [DESIGN_BRIEF.md](DESIGN_BRIEF.md); this file is the *where we are*.
 
@@ -9,9 +9,10 @@ One-page summary of where NoCrumbs is, what comes next, and what could go wrong.
 | `DESIGN_BRIEF.md` | The spec: principles, address bar, completion, commands, keys, acceptance criteria (§15), tests (§16) |
 | `ROADMAP.md` (this file) | Stage, milestones, ranked upcoming work, risks, progress log |
 | `docs/spike.md` | M0 findings, how to run the spike, the manual checks still to do, the verdict |
-| `crates/`, `spikes/` | `nocrumbs-core` (UI-free), `nocrumbs-testfs` (in-memory FS), `spikes/m0-ghost-bar` (egui spike) |
-| `spec/requirements.toml` *(planned, M1)* | Every requirement with a stable ID, mapped to the keystroke-script tests that prove it |
-| `docs/gaps.md` *(planned, M1)* | Every known shortfall against the brief, ranked: the work list |
+| `crates/`, `spikes/`, `xtask/` | `nocrumbs-core` (UI-free), `nocrumbs-testfs` (in-memory FS and store), `nocrumbs-config` (TOML settings file), `spikes/m0-ghost-bar` (egui spike), `xtask` (`cargo xtask spec`) |
+| `spec/requirements.toml` | Every requirement with a stable ID, mapped to the tests that prove it; checked by `cargo xtask spec` |
+| `spec/COVERAGE.md` | Generated from the above: what is implemented, partial, manual or planned, and which acceptance criteria are met |
+| `docs/gaps.md` *(retired)* | The gap list is now the `partial`, `manual` and `planned` rows of `spec/COVERAGE.md` |
 | `archive/` | Superseded briefs and the original HTML concept sketch |
 
 Keep it current: every working session, update the milestone row and add one line to the progress log; when a gap closes, remove it from `docs/gaps.md`; re-measure the headline numbers when a milestone lands and at least monthly. Keep this file to one page of status: detail belongs in the docs above, not here.
@@ -32,9 +33,9 @@ Keep it current: every working session, update the milestone row and add one lin
 
 | | Value | Kind |
 |---|---|---|
-| Acceptance criteria met (§15) | 0 of 12 | measured by hand until M1 |
-| Requirements with a passing test | 0 of *n/a* (IDs assigned in M1) | measured by `cargo xtask spec` once it exists |
-| Automated tests passing | 176: 25 core units, 14 completion cases, 34 + 34 + 38 keystroke scripts (headless core), 12 in-memory filesystem, 18 egui UI, 1 format | measured, `cargo test --workspace` |
+| Acceptance criteria met (§15) | 5 of 12 | measured, `cargo xtask spec` |
+| Requirements | 135: 96 implemented, 14 partial, 3 manual (need a human), 22 planned | measured, `cargo xtask spec` |
+| Tests tied to a requirement | 179 of 216, and all 179 pass | measured, `cargo xtask spec --run` |
 | 100k-row folder, keystroke cost (optimised, headless) | 6–9 ms typing, ≈ 13 ms per glob-filter keystroke; ≈ 1 ms/frame idle | measured, see `docs/spike.md` |
 | Remaining to alpha | ≈ 50–95 focused hours | estimated, uncalibrated |
 | Remaining to Windows 1.0 | ≈ 120–230 focused hours | estimated, uncalibrated |
@@ -47,7 +48,7 @@ Keep it current: every working session, update the milestone row and add one lin
 | # | Milestone | Status | Estimate (h) | Exit criteria |
 |---|---|---|---|---|
 | M0 | **Spike**: egui bar with ghost text, 100k-row virtual list, IME, AccessKit pass | **in progress**: ghost text and 100k list proven by tests; IME and screen reader need a human | 8–16 | Go/no-go note in `docs/spike.md`; the three risks in brief §3.2 each answered with evidence |
-| M1 | **Core**: `nocrumbs-core` + `nocrumbs-testfs` + keystroke-test harness; `spec/requirements.toml` | **in progress**: `Bar`, `sim::Session`, parser, aliases, names, sorting, history, file operations, multi-select and undo are in; `requirements.toml` and persistence are not | 40–80 | Brief §4–§8 pass headless; every bug from the HTML concept is a regression test (§16) |
+| M1 | **Core**: `nocrumbs-core` + `nocrumbs-testfs` + keystroke-test harness; `spec/requirements.toml` | **nearly done**: everything in brief §4–§9 that does not need a real OS is built and spec-tracked; open: OPN-01, FUZ-01 and a few `partial` rows | 40–80 | Brief §4–§8 pass headless; every bug from the HTML concept is a regression test (§16) |
 | M2 | **Windows shell**: real `Fs`/`Platform`, async listing, Recycle Bin, clipboard interop, watcher, config/history | not started | 40–70 | §15 items 8–11 met on Windows; portable mode works |
 | M3 | **UI polish, accessibility, signed release** | not started | 30–60 | All §15 met; accessibility checks in §13; **v1.0 (Windows)** |
 | M4 | **Linux port** | not started | 30–60 | Core unchanged; platform crate only |
@@ -60,9 +61,7 @@ Ranked; the next thing to do is first.
 | Rank | Work | Estimate (h) |
 |---|---|---|
 | 0 | Finish M0: the human checklist in `docs/spike.md` (ghost on screen, IME, Narrator/NVDA, mouse, high DPI) | 1–3 |
-| 1 | Assign stable requirement IDs to brief §4–§15 and create `spec/requirements.toml` | 4–8 |
-| 2 | Persist aliases and history (config file, portable mode), frecency ranking for completion | 8–16 |
-| 3 | Assign stable requirement IDs and create `spec/requirements.toml`; map the 176 tests to them | 4–8 |
+| 1 | Close the last M1 gaps: OPN-01 (Enter opens the selected row), FUZ-01 (fuzz/property tests for the parser), CMP-15 (tint other matches), SEL-04 (selection size), KEY-08 (Shift+Del) | 8–16 |
 | 4 | Windows shell (M2): real `Fs` with Recycle Bin, `CF_HDROP` clipboard interop, async operations with progress and cancel, file watcher, `:open` | 40–70 |
 | 5 | Font fallback stack for arbitrary file names (CJK, Arabic, Thai, emoji): default egui fonts draw tofu | 6–12 |
 
@@ -84,6 +83,8 @@ Tracked in the brief, §18 (toolkit is decided: egui/eframe). Next ones to settl
 ## Progress log
 
 Newest first. One line per entry: date (milestone, what changed); estimates unchanged/changed.
+
+2026-11-23 (M1): Requirements spec and persistence. `spec/requirements.toml` gives 135 requirements stable IDs (from brief §3–§16 plus persistence), each mapped to tests; `cargo xtask spec` rejects duplicate ids, missing tests, implemented-without-tests and unknown acceptance references, `--run` proves every referenced test passes, `--write` regenerates `spec/COVERAGE.md`, and CI checks it is current. Acceptance criteria met: 5 of 12 (measured; was "0, by hand"). Aliases and frecency now persist: `Frecency` ranks completions by use and recency (§5.1), `StateStore` + `nocrumbs-config` write a TOML file atomically, set a damaged file aside as `.bad`, refuse a newer version, and honour portable mode; the spike takes `--state FILE`. 216 tests. Estimates unchanged.
 
 2026-11-20 (M1): File operations in the core. `Fs` gained a write side (create, rename, copy, move, trash, restore, delete) with typed errors; `MemFs` implements all of it including folder subtrees and the trash. `Bar` now runs `:mkdir`, `:touch`, `:rename`, `:rm`, `:rm!` (asks first), `:copy`, `:cut`, `:paste`, `:undo`, `:redo`, `:log`, with multi-select (Ctrl/Shift click, Shift+arrows, Ctrl+A), `name (2)` collision renaming, the folder-into-itself guard (the sketch's data-loss bug is a regression test), a clipboard that follows renames, and a reversible undo stack that never deletes for good. The egui app maps Del/Ctrl+C/X/V/Z/A/Backspace to the list once Esc has blurred the bar. 176 tests; 100k timings unchanged. Estimates unchanged.
 

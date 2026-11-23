@@ -19,7 +19,10 @@ Requires Rust 1.95+ (tested with 1.99) and, on Windows, the MSVC build tools.
 ```
 cargo run -p m0-ghost-bar            # the M0 address-bar spike, on an in-memory filesystem
 cargo test --workspace               # core cases and headless UI keystroke tests
+cargo xtask spec                     # check the requirements spec against the tests; add --run, --write
 ```
+
+Add `-- --state settings.toml` to the spike to keep aliases and frecency between runs.
 
 See [docs/spike.md](docs/spike.md) for what to try, what was found, and what still needs a human check.
 
@@ -29,6 +32,7 @@ See [docs/spike.md](docs/spike.md) for what to try, what was found, and what sti
 |---|---|
 | [DESIGN_BRIEF.md](DESIGN_BRIEF.md) | The specification: principles, address bar, completion, commands, keys, acceptance criteria |
 | [ROADMAP.md](ROADMAP.md) | Stage, milestones, ranked upcoming work, risks, progress log |
+| [spec/COVERAGE.md](spec/COVERAGE.md) | Every requirement and whether it is implemented, partial, manual or planned (generated from `spec/requirements.toml`) |
 | [docs/spike.md](docs/spike.md) | Milestone-0 spike: findings, measurements, manual checks, verdict |
 | [archive/concept-sketch.html](archive/concept-sketch.html) | The original HTML concept sketch (from when the project was called OneBar). Not a behavioural reference; kept for history |
 | `archive/` | Superseded versions of the brief and the concept sketch |

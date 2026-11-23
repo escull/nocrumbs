@@ -28,9 +28,11 @@ use crate::complete::{
     Analysis, BarContext, CompletionKind, Mode, ResolveError, analyze, display_path, resolve_detailed,
 };
 use crate::fileops::{ClipOp, Clipboard, UndoStack, parent_of};
+use crate::frecency::Frecency;
 use crate::fs::{Entry, Fs};
 use crate::glob::Glob;
 use crate::path::fold_cmp;
+use crate::state::{PersistedState, StateStore};
 
 mod ops;
 mod select;
@@ -120,6 +122,10 @@ pub struct Bar {
     cwd: String,
     show_hidden: bool,
     aliases: Aliases,
+    frecency: Frecency,
+    store: Option<Arc<dyn StateStore>>,
+    save_failing: bool,
+    clock: Arc<dyn Fn() -> i64 + Send + Sync>,
     sort: (SortKey, SortDir),
     /// Visited folders, oldest first; `hist_pos` is the current one.
     history: Vec<String>,
@@ -183,6 +189,10 @@ impl Bar {
             cwd,
             show_hidden: false,
             aliases: Aliases::new(),
+            frecency: Frecency::new(),
+            store: None,
+            save_failing: false,
+            clock: Arc::new(|| 0),
             sort: (SortKey::Name, SortDir::Asc),
             text: String::new(),
             ghost_chars: 0,
@@ -310,6 +320,61 @@ impl Bar {
         self.show_hidden = on;
         self.analysed_for = None;
         self.reanalyze();
+    }
+
+    /// The clock used to age frecency (seconds since the Unix epoch). The core has no clock of
+    /// its own; tests inject a fixed one. Defaults to a constant 0.
+    pub fn set_clock(&mut self, clock: Arc<dyn Fn() -> i64 + Send + Sync>) {
+        self.clock = clock;
+    }
+
+    /// Everything that persists between sessions.
+    pub fn state(&self) -> PersistedState {
+        PersistedState { aliases: self.aliases.clone(), frecency: self.frecency.clone() }
+    }
+
+    pub fn frecency(&self) -> &Frecency {
+        &self.frecency
+    }
+
+    /// Load aliases and frecency from `store`, and save them back as they change. Problems
+    /// (a damaged file that was set aside, a file from a newer version) appear in the status line
+    /// and never stop the bar from working; with a store that cannot load, nothing is persisted.
+    pub fn attach_store(&mut self, store: Arc<dyn StateStore>) {
+        match store.load() {
+            Ok(loaded) => {
+                self.aliases = loaded.state.aliases;
+                self.frecency = loaded.state.frecency;
+                self.store = Some(store);
+                self.save_failing = false;
+                self.analysed_for = None;
+                self.reanalyze();
+                if let Some(notice) = loaded.notice {
+                    self.set_status(notice, Tone::Warn);
+                }
+            }
+            Err(e) => self.set_status(format!("Settings were not loaded and will not be saved: {e}"), Tone::Warn),
+        }
+    }
+
+    /// Save to the attached store, if any. A failure is reported once, then kept quiet until a
+    /// save works again, so a read-only disk does not nag on every keystroke.
+    fn save_state(&mut self) {
+        let Some(store) = self.store.clone() else { return };
+        match store.save(&self.state()) {
+            Ok(()) => self.save_failing = false,
+            Err(e) => {
+                if !self.save_failing {
+                    self.save_failing = true;
+                    self.set_status(format!("Could not save settings: {e}"), Tone::Warn);
+                }
+            }
+        }
+    }
+
+    fn record_visit(&mut self, path: &str) {
+        let now = (self.clock)();
+        self.frecency.record(path, now);
     }
 
     pub fn aliases(&self) -> &Aliases {
@@ -443,6 +508,8 @@ impl Bar {
         BarContext {
             fs: &*self.fs,
             aliases: &self.aliases,
+            frecency: &self.frecency,
+            now: (self.clock)(),
             cwd: &self.cwd,
             home: &self.home,
             sep: self.sep,
@@ -593,19 +660,23 @@ impl Bar {
     fn go(&mut self, input: &str) {
         match resolve_detailed(input, &self.ctx()) {
             Ok(r) if r.is_dir => {
+                self.record_visit(&r.path);
                 self.navigate(r.path);
                 let shown = self.display_cwd();
                 self.set_status(format!("Now in {shown}"), Tone::Good);
+                self.save_state();
             }
             Ok(r) => {
                 let (dir, name) = r.path.rsplit_once('/').unwrap_or(("", &r.path));
                 let dir = if dir.is_empty() { "/".to_string() } else { dir.to_string() };
                 let name = name.to_string();
+                self.record_visit(&r.path);
                 self.navigate(dir);
                 let pos = self.rows.iter().position(|&i| self.entries[i as usize].name == name);
                 self.select_row(pos);
                 self.scroll_request = pos;
                 self.set_status(format!("Selected {name}"), Tone::Good);
+                self.save_state();
             }
             Err(ResolveError::NoSuchPath) => self.error(format!("No such path: {}", input.trim())),
             Err(e @ ResolveError::DanglingAlias { .. }) => self.error(e.to_string()),
@@ -673,9 +744,11 @@ impl Bar {
             self.set_status("Already at the top", Tone::Info);
             return;
         }
+        self.record_visit(&parent);
         self.navigate(parent);
         let shown = self.display_cwd();
         self.set_status(format!("Now in {shown}"), Tone::Good);
+        self.save_state();
     }
 
     /// Finish a command that did nothing wrong but nothing either: idle bar, neutral message.
@@ -721,6 +794,7 @@ impl Bar {
                 if self.aliases.remove(&name, self.fs.case_insensitive()) {
                     self.analysed_for = None;
                     self.done(format!("Removed alias {name}"));
+                    self.save_state();
                 } else {
                     self.error(format!("No such alias: {name}"));
                 }
@@ -752,6 +826,7 @@ impl Bar {
                 let shown = display_path(&target, &self.ctx());
                 let verb = if replaced { "updated" } else { "created" };
                 self.done(format!("Alias {name} {verb}: {shown}. Type {name} to jump there"));
+                self.save_state();
             }
             Err(e) => self.error(e.to_string()),
         }

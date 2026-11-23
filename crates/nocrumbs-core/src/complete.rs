@@ -15,6 +15,7 @@ use std::fmt;
 use std::sync::OnceLock;
 
 use crate::alias::Aliases;
+use crate::frecency::Frecency;
 use crate::fs::Fs;
 use crate::glob::Glob;
 use crate::path::{fold_cmp, is_sep, normalize, starts_with};
@@ -23,6 +24,10 @@ use crate::path::{fold_cmp, is_sep, normalize, starts_with};
 pub struct BarContext<'a> {
     pub fs: &'a dyn Fs,
     pub aliases: &'a Aliases,
+    /// What the user has used, for ranking completions (brief section 5.1).
+    pub frecency: &'a Frecency,
+    /// The current time in seconds since the Unix epoch (the core has no clock of its own).
+    pub now: i64,
     /// Canonical absolute current folder.
     pub cwd: &'a str,
     /// Canonical absolute home folder (`~`).
@@ -335,9 +340,10 @@ fn complete_entry(head: &str, partial: &str, ctx: &BarContext<'_>) -> Option<Com
     let want_hidden = ctx.show_hidden || partial.starts_with('.');
     let ci = ctx.fs.case_insensitive();
     let first_segment = head.is_empty();
+    let scores = ctx.frecency.scores_in(&dir, ctx.now);
 
-    // (name, kind, is_dir). Case-sensitive filesystems prefer exact-case matches, then fold.
-    let mut best: Option<(&str, CompletionKind, bool)> = None;
+    // Case-sensitive filesystems prefer exact-case matches, then fold.
+    let mut best: Option<Cand<'_>> = None;
     let mut count = 0usize;
     for pass in 0..2 {
         let fold = ci || pass == 1;
@@ -346,13 +352,15 @@ fn complete_entry(head: &str, partial: &str, ctx: &BarContext<'_>) -> Option<Com
                 continue;
             }
             count += 1;
-            best = Some(pick(best, (e.name.as_str(), CompletionKind::Entry, e.is_dir)));
+            let score = if scores.is_empty() { 0 } else { scores.get(e.name.as_str()).copied().unwrap_or(0) };
+            let cand = Cand { name: e.name.as_str(), kind: CompletionKind::Entry, is_dir: e.is_dir, score };
+            best = Some(pick(best, cand));
         }
         if first_segment {
             for (name, _) in ctx.aliases.iter() {
                 if starts_with(name, partial, fold) {
                     count += 1;
-                    best = Some(pick(best, (name, CompletionKind::Alias, true)));
+                    best = Some(pick(best, Cand { name, kind: CompletionKind::Alias, is_dir: true, score: 0 }));
                 }
             }
         }
@@ -360,7 +368,7 @@ fn complete_entry(head: &str, partial: &str, ctx: &BarContext<'_>) -> Option<Com
             break;
         }
     }
-    let (name, kind, is_dir) = best?;
+    let Cand { name, kind, is_dir, .. } = best?;
 
     let sep = head.chars().last().filter(|c| is_sep(*c)).unwrap_or(ctx.sep);
     let mut ghost: String = name.chars().skip(partial.chars().count()).collect();
@@ -372,15 +380,27 @@ fn complete_entry(head: &str, partial: &str, ctx: &BarContext<'_>) -> Option<Com
     Some(Completion { name: name.to_string(), kind, is_dir, ghost, accepted, matches: count })
 }
 
-/// The better of two candidates: alphabetical (ignoring case), an alias before an entry of the
-/// same name (the alias wins resolution), then exact spelling.
-fn pick<'a>(
-    best: Option<(&'a str, CompletionKind, bool)>,
-    cand: (&'a str, CompletionKind, bool),
-) -> (&'a str, CompletionKind, bool) {
+/// One completion candidate, with how much the user has used it.
+#[derive(Clone, Copy)]
+struct Cand<'a> {
+    name: &'a str,
+    kind: CompletionKind,
+    is_dir: bool,
+    score: u32,
+}
+
+/// The better of two candidates (brief section 5.1): the one the user has used more, and more
+/// recently (frecency); then alphabetical ignoring case; an alias before an entry of the same
+/// name (the alias wins resolution); then exact spelling.
+fn pick<'a>(best: Option<Cand<'a>>, cand: Cand<'a>) -> Cand<'a> {
     let Some(b) = best else { return cand };
     let rank = |k: CompletionKind| u8::from(k != CompletionKind::Alias);
-    let ord = fold_cmp(cand.0, b.0).then_with(|| rank(cand.1).cmp(&rank(b.1))).then_with(|| cand.0.cmp(b.0));
+    let ord = b
+        .score
+        .cmp(&cand.score)
+        .then_with(|| fold_cmp(cand.name, b.name))
+        .then_with(|| rank(cand.kind).cmp(&rank(b.kind)))
+        .then_with(|| cand.name.cmp(b.name));
     if ord == Ordering::Less { cand } else { b }
 }
 

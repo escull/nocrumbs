@@ -13,7 +13,7 @@ use egui::text::{CCursor, CCursorRange};
 use egui::text_edit::TextEditState;
 use egui::{Align, Color32, Event, EventFilter, Id, ImeEvent, Key, RichText, Sense, TextStyle};
 use egui_extras::{Column, TableBuilder};
-use nocrumbs_core::{Aliases, Bar, EditKind, Key as BarKey, Mode, Sel, SortDir, SortKey, Tone};
+use nocrumbs_core::{Aliases, Bar, EditKind, Key as BarKey, Mode, Sel, SortDir, SortKey, StateStore, Tone};
 use nocrumbs_testfs::MemFs;
 
 use crate::format;
@@ -21,6 +21,15 @@ use crate::format;
 const HOME: &str = "/home/user";
 const ACCENT: Color32 = Color32::from_rgb(0x6d, 0x4a, 0xff);
 const ROW_H: f32 = 22.0;
+
+/// Starter aliases for a first run (brief section 6); the user can delete them.
+fn seed_aliases(bar: &mut Bar) {
+    bar.set_aliases(Aliases::from_pairs([
+        ("dl", "/home/user/Downloads"),
+        ("proj", "/home/user/projects"),
+        ("pics", "/home/user/Pictures"),
+    ]));
+}
 
 /// Dark theme with the accent colour as the text selection (which is how ghost text looks).
 pub fn setup(ctx: &egui::Context) {
@@ -76,12 +85,13 @@ impl App {
     pub fn with_start(big_n: usize, start: &str) -> Self {
         let fs = Arc::new(MemFs::sample(true, big_n));
         let mut bar = Bar::new(fs, HOME, start, '/');
-        // Seed aliases (brief section 6); persistence comes with the Windows shell.
-        bar.set_aliases(Aliases::from_pairs([
-            ("dl", "/home/user/Downloads"),
-            ("proj", "/home/user/projects"),
-            ("pics", "/home/user/Pictures"),
-        ]));
+        // Frecency ages by the real clock.
+        bar.set_clock(Arc::new(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+        }));
+        seed_aliases(&mut bar);
         bar.set_status(
             "Try: Doc then Tab · pi · proj/nocr · dl/*.pdf · :cd Doc · :sort size desc · :alias work ~/Documents · :help",
             Tone::Info,
@@ -94,6 +104,15 @@ impl App {
             seen_errors: 0,
             error_until: None,
             perf: Perf::default(),
+        }
+    }
+
+    /// Keep aliases and frecency in `store` across runs. A first run (an empty store) keeps the
+    /// seed aliases; after that the stored ones are used.
+    pub fn attach_store(&mut self, store: Arc<dyn StateStore>) {
+        self.bar.attach_store(store);
+        if self.bar.aliases().is_empty() && self.bar.frecency().is_empty() {
+            seed_aliases(&mut self.bar);
         }
     }
 

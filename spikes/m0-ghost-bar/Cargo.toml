@@ -11,6 +11,7 @@ publish.workspace = true
 eframe = "0.37.0"
 egui = "0.37"
 egui_extras = "0.37.0"
+nocrumbs-config = { version = "0.0.1", path = "../../crates/nocrumbs-config" }
 nocrumbs-core = { version = "0.0.1", path = "../../crates/nocrumbs-core" }
 nocrumbs-testfs = { version = "0.0.1", path = "../../crates/nocrumbs-testfs" }
 

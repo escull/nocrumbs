@@ -420,3 +420,16 @@ fn scroll_requests_follow_the_highlight() {
     let r = s.bar_mut().take_scroll_request().expect("scroll to the highlighted row");
     assert_eq!(s.bar().row(r).name, s.bar().highlighted_name().unwrap());
 }
+
+#[test]
+fn empty_input_then_enter_resets_the_bar_to_the_current_path() {
+    let mut s = session();
+    s.type_str("Documents/rec");
+    s.select_all();
+    s.backspace();
+    assert_eq!(s.text(), "");
+    s.key(Key::Enter);
+    assert_eq!(s.text(), "~", "the bar shows the current path again");
+    assert_eq!(s.bar().cwd(), HOME);
+    assert_eq!(s.bar().view_dir(), HOME, "and the list is back on it");
+}

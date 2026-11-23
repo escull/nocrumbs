@@ -9,6 +9,7 @@ therefore *provisionally go*; see [Verdict](#verdict).
 cargo run -p m0-ghost-bar                      # 100,000-entry /big folder, starts in ~
 cargo run -p m0-ghost-bar -- --start /big      # starts inside the 100k folder
 cargo run -p m0-ghost-bar -- --small           # 1,000 entries instead
+cargo run -p m0-ghost-bar -- --state spike.toml  # keep aliases and frecency in spike.toml between runs
 cargo test -p m0-ghost-bar                     # headless keystroke tests
 cargo test -p nocrumbs-testfs                  # completion cases against the in-memory FS
 cargo test -p m0-ghost-bar --profile perf --test bar perf_100k -- --ignored --nocapture

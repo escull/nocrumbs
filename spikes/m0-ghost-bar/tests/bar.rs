@@ -332,3 +332,40 @@ fn while_the_bar_has_focus_ctrl_keys_edit_text_not_files() {
     assert_eq!(u.app().bar().selection_len(), 0);
     assert_eq!(u.app().shown_rows(), before);
 }
+
+#[test]
+fn aliases_and_history_survive_a_restart_through_a_real_settings_file() {
+    use std::sync::Arc;
+
+    let dir = std::env::temp_dir().join(format!("nocrumbs-spike-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let file = dir.join("config.toml");
+    let launch = || {
+        let mut app = App::with_start(1_000, "/home/user");
+        app.attach_store(Arc::new(nocrumbs_config::FileStore::new(&file)));
+        let mut h =
+            Harness::builder().with_size(Vec2::new(960.0, 640.0)).build_ui_state(|ui, app: &mut App| app.show(ui), app);
+        setup(&h.ctx);
+        h.run_steps(3);
+        Ui { h }
+    };
+
+    let mut first = launch();
+    assert_eq!(first.app().bar().aliases().len(), 3, "a first run starts with the seed aliases");
+    first.type_str(":alias work ~/Documents");
+    first.key(Key::Enter);
+    first.type_str("Downloads");
+    first.key(Key::Enter);
+    drop(first);
+    assert!(file.is_file(), "the settings file was written");
+
+    let mut second = launch();
+    assert_eq!(second.app().bar().aliases().len(), 4, "the new alias is still there");
+    second.type_str("wo");
+    assert_eq!(second.app().text(), "work/", "and it completes");
+    second.key(Key::Escape);
+    second.key(Key::Escape);
+    second.type_str("Do");
+    assert_eq!(second.app().text(), "Downloads/", "the folder used last time is offered first");
+    let _ = std::fs::remove_dir_all(&dir);
+}

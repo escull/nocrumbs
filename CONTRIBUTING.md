@@ -18,7 +18,8 @@ New source files should carry this header (once code exists):
 2. **Behaviour is specified by tests.** Anything described in §4–§10 of the brief is verified by a keystroke-script test against the core crate. A bug fix includes a regression case; a feature includes its cases.
 3. **Keep core UI-free.** `nocrumbs-core` has no UI and no direct OS calls; platform code sits behind the `Fs` and `Platform` traits.
 4. **Windows first, but never Windows-only in core.** No `\` or `/` literals, drive-letter assumptions or case-sensitivity constants in core.
-5. **Keep `ROADMAP.md` current.** Update the milestone row and add a one-line progress-log entry when your change lands.
+5. **Tie behaviour to a requirement.** A new behaviour or a bug fix adds or updates an entry in `spec/requirements.toml` (stable `AREA-NN` id, status, the tests that prove it), then run `cargo xtask spec --write` and commit `spec/COVERAGE.md`. CI runs `cargo xtask spec --check-doc` and fails if the mapping is invalid or the report is stale.
+6. **Keep `ROADMAP.md` current.** Update the milestone row and add a one-line progress-log entry when your change lands.
 
 ## Reporting issues
 

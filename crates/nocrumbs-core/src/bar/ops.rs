@@ -132,11 +132,13 @@ impl Bar {
         if let Some(clip) = self.clip.as_mut() {
             clip.renamed(&join(&dir, &old), &join(&dir, new_name));
         }
+        self.frecency.renamed(&join(&dir, &old), &join(&dir, new_name));
         let msg = format!("Renamed {old} to {new_name}");
         self.record(msg.clone(), vec![Step::Renamed { dir, from: old, to: new_name.to_string() }]);
         self.refresh();
         self.done(msg);
         self.select_names(&[new_name.to_string()]);
+        self.save_state();
     }
 
     // ----- delete -----

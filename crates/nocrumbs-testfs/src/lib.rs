@@ -4,10 +4,14 @@
 //! It implements the whole write side of [`Fs`] (create, rename, copy, move, trash, restore,
 //! delete) so the core's file operations and undo can be tested end to end.
 
+mod store;
+
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
 
 use nocrumbs_core::{Entry, Fs, FsError, NameRules, TrashToken, fold_cmp};
+
+pub use store::MemStore;
 
 /// Fixed timestamp for directories (2025-10-09).
 const DIR_MTIME: i64 = 1_760_000_000;

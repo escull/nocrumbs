@@ -15,11 +15,13 @@ mod bar;
 mod command;
 mod complete;
 mod fileops;
+mod frecency;
 mod fs;
 mod glob;
 mod names;
 mod path;
 pub mod sim;
+mod state;
 
 pub use alias::Aliases;
 pub use bar::{Bar, EditKind, Key, Sel, Tone};
@@ -29,7 +31,9 @@ pub use complete::{
     resolve, resolve_detailed,
 };
 pub use fileops::{ClipItem, ClipOp, Clipboard, UndoStack, split_ext, unique_name};
+pub use frecency::{Frecency, Visit};
 pub use fs::{Entry, Fs, FsError, TrashToken};
 pub use glob::Glob;
 pub use names::{AliasNameError, NameError, NameRules, validate_alias_name, validate_name};
 pub use path::{fold_cmp, is_sep};
+pub use state::{Loaded, PersistedState, StateStore, StoreError};
