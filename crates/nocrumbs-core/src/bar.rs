@@ -31,11 +31,14 @@ use crate::fileops::{ClipOp, Clipboard, UndoStack, parent_of};
 use crate::frecency::Frecency;
 use crate::fs::{Entry, Fs};
 use crate::glob::Glob;
-use crate::path::fold_cmp;
+use crate::path::{fold_cmp, starts_with};
 use crate::state::{PersistedState, StateStore};
 
 mod ops;
 mod select;
+
+pub use select::SelectionInfo;
+use select::Step;
 
 /// A text selection in the bar, in characters. `anchor == caret` is just a caret.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +98,15 @@ pub enum Key {
     Redo,
     /// Backspace in the list: up one folder.
     ParentFolder,
+    /// Up / Down in the list: like `Up` / `Down`, but stopping at the ends (they wrap from the bar).
+    ListUp,
+    ListDown,
+    /// Enter in the list: answer a pending question, otherwise open the selected row.
+    Open,
+    /// Esc in the list: cancel a pending question, otherwise clear the selection.
+    ListEscape,
+    /// Shift+Del in the list: delete the selection for good (asks first).
+    DeletePermanent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,6 +165,11 @@ pub struct Bar {
     clip: Option<Clipboard>,
     undo: UndoStack,
     pending: Option<ops::Pending>,
+    /// The rows were just chosen with the arrow keys or a click, and the bar text has not changed
+    /// since: Enter opens the selected row instead of acting on the text (brief section 9.3).
+    enter_opens: bool,
+    /// A file the front end should open with the system's default handler.
+    open_request: Option<String>,
     log: Vec<String>,
 
     status: (String, Tone),
@@ -209,6 +226,8 @@ impl Bar {
             clip: None,
             undo: UndoStack::default(),
             pending: None,
+            enter_opens: false,
+            open_request: None,
             log: Vec::new(),
             status: (String::new(), Tone::Info),
             errors: 0,
@@ -420,6 +439,24 @@ impl Bar {
         self.scroll_request.take()
     }
 
+    /// A file to open with the system's default handler (Enter or `:open` on a file). The core
+    /// cannot launch anything itself: that is the platform's job.
+    pub fn take_open_request(&mut self) -> Option<String> {
+        self.open_request.take()
+    }
+
+    /// Does this row also match what has been typed, besides the one Tab would go to? A front
+    /// end gives such rows a fainter tint (brief section 5), so an ambiguous completion is
+    /// visible. Nothing is tinted when nothing has been typed of the name yet.
+    pub fn is_other_match(&self, row: usize) -> bool {
+        let Some(c) = &self.analysis.completion else { return false };
+        c.kind != CompletionKind::Command
+            && !c.partial.is_empty()
+            && Some(row) != self.hl_row
+            && row < self.rows.len()
+            && starts_with(&self.row(row).name, &c.partial, c.folded)
+    }
+
     /// The bar should give up focus (third Esc).
     pub fn take_blur_request(&mut self) -> bool {
         std::mem::take(&mut self.blur_request)
@@ -438,6 +475,7 @@ impl Bar {
         // Whatever was selected (the ghost) has been replaced or removed by this edit.
         self.ghost_chars = 0;
         self.pending = None; // typing is not an answer to "delete permanently?"
+        self.enter_opens = false; // the text changed: Enter acts on it, not on the selection
         self.reanalyze();
         if kind == EditKind::Insert && !self.composing && caret == self.char_len() {
             self.offer_ghost();
@@ -471,19 +509,36 @@ impl Bar {
             Key::Enter if !self.composing => {
                 if self.pending.is_some() {
                     self.confirm();
+                } else if self.enter_opens && self.selection_len() > 0 {
+                    self.open_selected();
                 } else {
                     self.submit();
                 }
             }
+            Key::Open => {
+                if self.pending.is_some() {
+                    self.confirm();
+                } else {
+                    self.open_selected();
+                }
+            }
+            Key::ListEscape => {
+                if !self.cancel_pending() {
+                    self.clear_selection();
+                }
+            }
+            Key::DeletePermanent => self.remove_selected(true),
             Key::Escape => {
                 if !self.cancel_pending() {
                     self.escape();
                 }
             }
-            Key::Up => self.move_selection(-1, false),
-            Key::Down => self.move_selection(1, false),
-            Key::ExtendUp => self.move_selection(-1, true),
-            Key::ExtendDown => self.move_selection(1, true),
+            Key::Up => self.move_selection(-1, Step::Wrap),
+            Key::Down => self.move_selection(1, Step::Wrap),
+            Key::ListUp => self.move_selection(-1, Step::Clamp),
+            Key::ListDown => self.move_selection(1, Step::Clamp),
+            Key::ExtendUp => self.move_selection(-1, Step::Extend),
+            Key::ExtendDown => self.move_selection(1, Step::Extend),
             Key::SelectAll => self.select_all_shown(),
             Key::Delete => self.remove_selected(false),
             Key::Copy => self.set_clipboard(ClipOp::Copy),
@@ -613,6 +668,7 @@ impl Bar {
 
     /// Tab: accept the completion (canonical casing), then offer the next level.
     fn accept(&mut self) {
+        self.enter_opens = false;
         self.reanalyze();
         let Some(c) = self.analysis.completion.clone() else {
             // Nothing to complete: commit any ghost as typed text, keep focus.
@@ -696,14 +752,22 @@ impl Bar {
 
     /// Alt+Left / Alt+Right, `:back` / `:fwd`.
     fn history_step(&mut self, step: i32) -> bool {
-        let target = self.hist_pos as i64 + i64::from(step);
-        if target < 0 || target >= self.history.len() as i64 {
-            let msg = if step < 0 { "Nothing to go back to" } else { "Nothing to go forward to" };
-            self.set_status(msg, Tone::Info);
-            return false;
-        }
-        self.hist_pos = target as usize;
-        self.cwd = self.history[self.hist_pos].clone();
+        // Folders that have since been deleted, renamed or moved are skipped (but kept, since
+        // an undo can bring them back).
+        let mut at = self.hist_pos as i64;
+        let (target, folder) = loop {
+            at += i64::from(step);
+            if at < 0 || at >= self.history.len() as i64 {
+                let msg = if step < 0 { "Nothing to go back to" } else { "Nothing to go forward to" };
+                self.set_status(msg, Tone::Info);
+                return false;
+            }
+            if let Some(folder) = self.fs.canonical_dir(&self.history[at as usize]) {
+                break (at as usize, folder);
+            }
+        };
+        self.hist_pos = target;
+        self.cwd = folder;
         self.go_idle();
         let shown = self.display_cwd();
         self.set_status(format!("Now in {shown}"), Tone::Good);
@@ -735,6 +799,26 @@ impl Bar {
         if !(self.ghost_chars == 0 && self.typed() == self.display_cwd()) {
             self.go_idle();
         }
+    }
+
+    /// If the current folder is gone (deleted, renamed or moved away), fall back to the
+    /// nearest folder above it that still exists. Returns whether it had to.
+    fn leave_missing_folder(&mut self) -> bool {
+        if let Some(c) = self.fs.canonical_dir(&self.cwd) {
+            self.cwd = c;
+            return false;
+        }
+        let mut folder = self.cwd.clone();
+        self.cwd = loop {
+            folder = parent_of(&folder).to_string();
+            if let Some(c) = self.fs.canonical_dir(&folder) {
+                break c;
+            }
+            if folder == "/" {
+                break folder;
+            }
+        };
+        true
     }
 
     /// Backspace in the list: up one folder.
@@ -809,7 +893,7 @@ impl Bar {
             Command::Paste => self.paste(),
             Command::Undo => self.undo_last(),
             Command::Redo => self.redo_last(),
-            Command::Open => self.info("Opening files comes with the Windows shell".to_string()),
+            Command::Open => self.open_selected(),
             Command::Log => self.show_log(),
         }
     }
@@ -832,12 +916,15 @@ impl Bar {
         }
     }
 
-    /// Staged Esc: remove the ghost, then revert the bar, then give up focus.
+    /// Staged Esc (brief section 10): remove the ghost, then revert the bar (which clears a
+    /// filter or preview), then deselect, then give up focus.
     fn escape(&mut self) {
         if self.ghost_chars > 0 {
             self.clear_ghost();
         } else if self.typed() != self.display_cwd() {
             self.go_idle();
+        } else if self.selection_len() > 0 {
+            self.clear_selection();
         } else {
             self.blur_request = true;
         }

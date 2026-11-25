@@ -243,9 +243,15 @@ tests = ["keystrokes.rs::typing_toward_a_folder_previews_it"]
 id = "CMP-15"
 section = "5 Inline completion"
 title = "Other matching candidates are signalled (+N more, fainter tint on their rows)"
-status = "partial"
-tests = ["keystrokes.rs::other_matches_are_reported"]
-note = "the status line says +N more; the other matching rows are not tinted"
+status = "implemented"
+tests = [
+  "keystrokes.rs::other_matches_are_reported",
+  "open_select.rs::the_other_candidates_are_marked_and_the_winner_is_not",
+  "open_select.rs::the_marks_survive_removing_the_ghost",
+  "open_select.rs::nothing_is_marked_when_nothing_is_ambiguous_or_nothing_is_typed",
+  "open_select.rs::a_folder_is_marked_when_an_alias_wins",
+  "bar.rs::other_matching_rows_get_a_fainter_tint_on_screen",
+]
 
 [[requirement]]
 id = "CMP-16"
@@ -267,6 +273,18 @@ section = "5 Inline completion"
 title = ":cd PATH and the path of :alias NAME PATH complete like a path, appending only"
 status = "implemented"
 tests = ["commands.rs::cd_completes_its_path_argument", "commands.rs::cd_completion_offers_aliases_and_alias_arguments_complete_paths", "commands.rs::no_path_completion_for_quoted_or_glob_arguments"]
+
+[[requirement]]
+id = "CMP-19"
+section = "5 Inline completion"
+title = "The ghost is cut by the name's own characters, even when lower-casing changes how many there are"
+status = "implemented"
+tests = [
+  "regressions.rs::completion_keeps_every_character_when_lower_casing_changes_the_length",
+  "regressions.rs::half_of_an_expanded_character_does_not_match",
+  "unit:path::tests::covered_characters_are_counted_in_the_name_not_the_typed_text",
+  "fuzz.rs::completion_of_tricky_unicode_names_never_mangles_what_was_typed",
+]
 
 # ---------------------------------------------------------------- 6 Aliases
 
@@ -469,8 +487,12 @@ tests = ["fileops.rs::copy_then_paste_into_another_folder_leaves_the_original", 
 id = "CMD-11"
 section = "8 Commands"
 title = ":open opens the selection with the OS default handler"
-status = "planned"
-milestone = "M2"
+status = "partial"
+tests = [
+  "open_select.rs::the_open_command_opens_the_selection",
+  "open_select.rs::enter_on_a_selected_file_asks_the_platform_to_open_it",
+]
+note = "the core enters folders and asks the front end to open files; launching the default handler comes with the Windows shell (M2)"
 
 [[requirement]]
 id = "CMD-12"
@@ -532,8 +554,17 @@ tests = ["unit:command::tests::no_argument_commands"]
 id = "FUZ-01"
 section = "8 Commands"
 title = "The bar parser is fuzz-tested: no input panics"
-status = "planned"
-milestone = "M1"
+status = "implemented"
+tests = [
+  "fuzz.rs::the_command_parser_never_panics",
+  "fuzz.rs::completion_never_panics_and_what_it_offers_exists",
+  "fuzz.rs::completion_of_tricky_unicode_names_never_mangles_what_was_typed",
+  "fuzz.rs::globs_never_panic_and_plain_names_match_themselves",
+  "fuzz.rs::name_validation_never_panics",
+  "fuzz.rs::unique_names_are_free",
+  "fuzz.rs::random_sessions_never_panic_and_keep_their_invariants",
+]
+note = "randomised property tests (proptest) with shrinking, not coverage-guided fuzzing"
 
 [[requirement]]
 id = "SRT-01"
@@ -613,9 +644,13 @@ tests = ["fileops.rs::the_selection_clears_when_the_list_changes", "keystrokes.r
 id = "SEL-04"
 section = "9 File operations"
 title = "The status line states the selection count and total size"
-status = "partial"
-tests = ["fileops.rs::shift_arrows_extend_and_select_all_takes_what_is_shown"]
-note = "the count is shown; the total size of the selection is not"
+status = "implemented"
+tests = [
+  "open_select.rs::selection_info_counts_files_folders_and_file_bytes",
+  "bar.rs::the_status_line_states_the_selection_count_and_size",
+  "unit:format::tests::selection_summaries",
+]
+note = "the size is that of the selected files; folders are counted but their contents are not measured"
 
 [[requirement]]
 id = "SEL-05"
@@ -625,11 +660,35 @@ status = "implemented"
 tests = ["keystrokes.rs::enter_on_a_file_selects_it_in_its_folder"]
 
 [[requirement]]
+id = "HIS-01"
+section = "9 File operations"
+title = "The current folder always exists: history skips folders that are gone, and removing the current folder moves to the nearest survivor"
+status = "implemented"
+tests = [
+  "regressions.rs::going_back_never_lands_in_a_deleted_folder",
+  "regressions.rs::history_steps_over_a_stale_entry_in_the_middle",
+  "regressions.rs::undoing_the_folder_you_are_in_moves_you_out_of_it",
+  "regressions.rs::a_folder_removed_underneath_you_is_left_for_the_nearest_survivor",
+  "fuzz.rs::random_sessions_never_panic_and_keep_their_invariants",
+]
+
+[[requirement]]
 id = "OPN-01"
 section = "9 File operations"
-title = "Enter opens the selected row (folder: navigate; file: default handler), from the bar too when the text is unchanged since the arrow keys selected it"
-status = "planned"
-milestone = "M1"
+title = "Enter opens the selected row (folder: navigate; file: the platform opens it), from the bar too when its text is unchanged since the arrow keys or a click selected it"
+status = "implemented"
+tests = [
+  "open_select.rs::enter_enters_the_folder_the_arrows_selected",
+  "open_select.rs::enter_on_a_selected_file_asks_the_platform_to_open_it",
+  "open_select.rs::a_filter_result_opens_from_the_keyboard_and_the_filter_stays",
+  "open_select.rs::editing_after_the_arrows_makes_enter_act_on_the_text",
+  "open_select.rs::tab_after_the_arrows_also_makes_enter_act_on_the_text",
+  "open_select.rs::a_selection_made_by_typing_a_path_is_not_opened_by_the_next_enter",
+  "open_select.rs::enter_in_the_list_always_opens_the_selection",
+  "open_select.rs::with_several_rows_selected_enter_opens_the_cursor_row",
+  "open_select.rs::opening_something_deleted_underneath_says_so",
+  "bar.rs::enter_after_the_arrows_opens_the_selection_in_the_real_widget",
+]
 
 [[requirement]]
 id = "REN-01"
@@ -757,9 +816,11 @@ milestone = "M2"
 id = "KEY-01"
 section = "10 Keyboard"
 title = "/ or Ctrl+L focuses the bar from anywhere"
-status = "partial"
-tests = ["bar.rs::list_keys_work_once_the_bar_has_given_up_focus"]
-note = "/ is tested; Ctrl+L is implemented but not asserted"
+status = "implemented"
+tests = [
+  "bar.rs::list_keys_work_once_the_bar_has_given_up_focus",
+  "bar.rs::ctrl_l_gives_the_bar_focus_back",
+]
 
 [[requirement]]
 id = "KEY-02"
@@ -778,9 +839,14 @@ tests = ["bar.rs::tab_accepts_canonical_case_and_descends", "keystrokes.rs::tab_
 [[requirement]]
 id = "KEY-04"
 section = "10 Keyboard"
-title = "Up and Down move the row selection from the bar, wrapping"
+title = "Up and Down move the row selection: wrapping from the bar, stopping at the ends in the list; Shift extends without wrapping"
 status = "implemented"
-tests = ["keystrokes.rs::arrow_keys_move_the_selection_and_wrap", "bar.rs::arrow_keys_move_the_selection_and_wrap"]
+tests = [
+  "keystrokes.rs::arrow_keys_move_the_selection_and_wrap",
+  "bar.rs::arrow_keys_move_the_selection_and_wrap",
+  "open_select.rs::arrows_in_the_list_stop_at_the_ends",
+  "open_select.rs::shift_arrows_never_wrap_around",
+]
 
 [[requirement]]
 id = "KEY-05"
@@ -807,9 +873,16 @@ milestone = "M3"
 id = "KEY-08"
 section = "10 Keyboard"
 title = "Del recycles; Shift+Del deletes permanently after confirming"
-status = "partial"
-tests = ["fileops.rs::the_delete_key_trashes_the_selection"]
-note = "Del is implemented; Shift+Del is not bound (use :rm!)"
+status = "implemented"
+tests = [
+  "fileops.rs::the_delete_key_trashes_the_selection",
+  "open_select.rs::shift_del_asks_first_and_enter_in_the_list_confirms",
+  "open_select.rs::shift_del_with_nothing_selected_asks_nothing",
+  "bar.rs::shift_del_as_windows_sends_it_asks_to_delete_for_good_and_never_cuts",
+  "bar.rs::shift_del_as_other_platforms_send_it_does_the_same",
+  "bar.rs::a_plain_cut_in_the_list_still_cuts",
+]
+note = "on Windows egui delivers Shift+Del as a Cut event; the tests send that event, the physical key has not been pressed in a test"
 
 [[requirement]]
 id = "KEY-09"
@@ -822,9 +895,15 @@ tests = ["bar.rs::list_keys_work_once_the_bar_has_given_up_focus", "fileops.rs::
 id = "KEY-10"
 section = "10 Keyboard"
 title = "Esc is staged: remove the ghost, then clear the filter and revert the bar, then deselect, then blur"
-status = "partial"
-tests = ["keystrokes.rs::escape_is_staged", "bar.rs::escape_is_staged", "keystrokes.rs::escape_clears_a_filter_and_restores_the_listing"]
-note = "ghost, revert and blur are tested in the core; clearing the selection on Esc is done by the egui front end and not asserted"
+status = "implemented"
+tests = [
+  "keystrokes.rs::escape_is_staged",
+  "keystrokes.rs::escape_clears_a_filter_and_restores_the_listing",
+  "open_select.rs::esc_in_the_bar_deselects_before_it_gives_up_focus",
+  "open_select.rs::esc_in_the_list_cancels_the_question_then_clears_the_selection",
+  "bar.rs::escape_is_staged",
+  "bar.rs::esc_in_the_list_clears_the_selection_and_enter_opens_it",
+]
 
 # ---------------------------------------------------------------- 11 Visual direction
 
@@ -931,8 +1010,13 @@ id = "ACC-02"
 section = "13 Accessibility and input"
 title = "Everything is operable by keyboard alone, with a visible focus indicator"
 status = "partial"
-tests = ["keystrokes.rs::enter_navigates_to_the_completed_text", "fileops.rs::clipboard_keys_work_from_the_list", "bar.rs::list_keys_work_once_the_bar_has_given_up_focus"]
-note = "navigation and file operations work without the mouse; opening the selected row from a filter (OPN-01) and F2 rename do not yet"
+tests = [
+  "keystrokes.rs::enter_navigates_to_the_completed_text",
+  "fileops.rs::clipboard_keys_work_from_the_list",
+  "bar.rs::list_keys_work_once_the_bar_has_given_up_focus",
+  "open_select.rs::a_filter_result_opens_from_the_keyboard_and_the_filter_stays",
+]
+note = "navigation, filtering, opening and file operations work without the mouse; F2 inline rename is not built (use :rename), and the focus indicator has not been reviewed"
 
 [[requirement]]
 id = "ACC-03"
@@ -1029,7 +1113,7 @@ tests = ["store.rs::unknown_keys_are_ignored_and_invalid_alias_names_skipped", "
 [[acceptance]]
 n = 1
 text = "From launch to any nested folder requires only typing + Enter (+Tab), no mouse, including after using a filter"
-requires = ["BAR-03", "CMP-05", "CMP-12", "FLT-04"]
+requires = ["BAR-03", "CMP-05", "CMP-12", "FLT-04", "OPN-01"]
 
 [[acceptance]]
 n = 2

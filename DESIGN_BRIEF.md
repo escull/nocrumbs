@@ -156,7 +156,9 @@ Click, arrow keys (from the bar or the list), or by typing a path to a file (sel
 `Shift`+click / `Shift`+↑↓ extend; `Ctrl`+click toggles; `Ctrl+A` selects all rows currently shown (including filter results). `:rm`/`:cut`/`:copy` operate on the whole selection; `:rename` and F2 require exactly one. The status line always states the selection count and total size.
 
 ### 9.3 Open / Enter
-Enter opens the selected row (folder → navigate; file → OS default handler via `ShellExecute`), whether focus is in the list **or in the bar** when the bar text is unchanged since the last arrow-key selection. If the bar text has been edited since, Enter acts on the bar text.
+Enter opens the selected row (folder → navigate; file → OS default handler via `ShellExecute`), whether focus is in the list **or in the bar** when the bar text is unchanged since the last arrow-key selection. If the bar text has been edited since, Enter acts on the bar text. A click or Ctrl+A counts like an arrow-key selection;
+a selection made by typing a path does not. With several rows selected, the cursor row is opened. Opening a file does not
+change folder, so a filter stays in place.
 
 ### 9.4 Rename and clipboard
 - **Rename (F2):** inline edit in the name cell; Enter commits, Esc reverts, blur commits; pre-selects the basename before the final extension.
@@ -193,7 +195,7 @@ Copies/moves/deletes run on a worker thread, show progress + cancel in the statu
 | `↑` / `↓` | Move row selection (from bar or list), no wrap at the ends in the list, wrap in the bar |
 | `Alt+←` / `Alt+→` | History back / forward |
 | `Backspace` (list focus) | Up one folder |
-| `F2` / `Del` / `Shift+Del` | Rename / recycle / permanent delete (confirm) |
+| `F2` / `Del` / `Shift+Del` | Rename / recycle / permanent delete (confirm). On Windows `Shift+Del` reaches egui as a *Cut* event, so the front end must read it as permanent delete in the list, never as a cut |
 | `Ctrl+C/X/V`, `Ctrl+Z/Y`, `Ctrl+A` | Clipboard, undo/redo, select all |
 | `Esc` | **Staged:** (1) remove ghost text → (2) clear filter/preview and revert bar to current path → (3) deselect → (4) blur the bar |
 

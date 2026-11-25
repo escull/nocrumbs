@@ -22,6 +22,16 @@ const HOME: &str = "/home/user";
 const ACCENT: Color32 = Color32::from_rgb(0x6d, 0x4a, 0xff);
 const ROW_H: f32 = 22.0;
 
+/// The tint of the row Tab would go to, and the fainter one of the other rows that also match.
+fn highlight_tint() -> Color32 {
+    ACCENT.gamma_multiply(0.22)
+}
+
+/// See [`highlight_tint`]. Public so a test can look for it on screen.
+pub fn other_match_tint() -> Color32 {
+    ACCENT.gamma_multiply(0.09)
+}
+
 /// Starter aliases for a first run (brief section 6); the user can delete them.
 fn seed_aliases(bar: &mut Bar) {
     bar.set_aliases(Aliases::from_pairs([
@@ -71,6 +81,7 @@ pub struct App {
     first_frame: bool,
     scroll_to: Option<usize>,
     seen_errors: u32,
+    last_opened: Option<String>,
     error_until: Option<Instant>,
     perf: Perf,
 }
@@ -102,6 +113,7 @@ impl App {
             first_frame: true,
             scroll_to: None,
             seen_errors: 0,
+            last_opened: None,
             error_until: None,
             perf: Perf::default(),
         }
@@ -117,6 +129,11 @@ impl App {
     }
 
     // ----- test / inspection surface -----
+
+    /// The last file the bar asked to have opened.
+    pub fn last_opened(&self) -> Option<&str> {
+        self.last_opened.as_deref()
+    }
 
     pub fn bar(&self) -> &Bar {
         &self.bar
@@ -191,7 +208,7 @@ impl App {
             self.bar_row(ui, &ctx);
             ui.add_space(4.0);
             ui.label(
-                RichText::new("Tab complete · Enter go · Up/Down select · Esc x3 blur the bar, then Del, Ctrl+C/X/V/Z/A work on the list · / refocus")
+                RichText::new("Tab complete · Enter go or open · Up/Down select · Esc x3 blur the bar, then Enter, Del, Shift+Del, Ctrl+C/X/V/Z/A act on the list · / refocus")
                     .small()
                     .weak(),
             );
@@ -203,6 +220,13 @@ impl App {
             ui.add_space(3.0);
         });
         egui::CentralPanel::default().show(ui, |ui| self.list(ui));
+
+        // The core asks for files to be opened; launching them is the Windows shell's job.
+        if let Some(path) = self.bar.take_open_request() {
+            self.bar.set_status(format!("Would open {path}: launching files comes with the Windows shell"), Tone::Info);
+            self.last_opened = Some(path);
+            ctx.request_repaint();
+        }
 
         self.perf.push(t0.elapsed().as_secs_f32() * 1000.0);
     }
@@ -221,12 +245,18 @@ impl App {
         // not. In the bar, Ctrl+C/V/Z/A edit text, as in any text field.
         let mut keys: Vec<BarKey> = Vec::new();
         let mut list_keys: Vec<BarKey> = Vec::new();
-        let (mut deleted, mut refocus, mut deselect) = (false, false, false);
+        let (mut deleted, mut refocus) = (false, false);
+        // Modifiers as they stand at each event: needed to tell Shift+Del from Ctrl+X below.
+        let mut held = ctx.input(|i| i.modifiers);
         for ev in &events {
             match ev {
+                Event::ModifiersChanged(m) => held = *m,
                 Event::Ime(ImeEvent::Preedit { text, .. }) => self.bar.set_composing(!text.is_empty()),
                 Event::Ime(ImeEvent::Commit(_)) => self.bar.set_composing(false),
                 Event::Copy if !focused => list_keys.push(BarKey::Copy),
+                // On Windows egui reports Shift+Del as Cut (an old shortcut), with no key event.
+                // In the list that must mean "delete for good, after asking", never a silent cut.
+                Event::Cut if !focused && held.shift && !held.command => list_keys.push(BarKey::DeletePermanent),
                 Event::Cut if !focused => list_keys.push(BarKey::Cut),
                 Event::Cut => deleted = true,
                 Event::Paste(_) if !focused => list_keys.push(BarKey::Paste),
@@ -246,19 +276,21 @@ impl App {
                     _ => {}
                 },
                 Event::Key { key, pressed: true, modifiers, .. } => match key {
+                    Key::Delete if modifiers.shift => list_keys.push(BarKey::DeletePermanent),
                     Key::Delete => list_keys.push(BarKey::Delete),
+                    Key::Enter => list_keys.push(BarKey::Open),
                     Key::Backspace => list_keys.push(BarKey::ParentFolder),
                     Key::ArrowUp if modifiers.shift => list_keys.push(BarKey::ExtendUp),
                     Key::ArrowDown if modifiers.shift => list_keys.push(BarKey::ExtendDown),
-                    Key::ArrowUp => list_keys.push(BarKey::Up),
-                    Key::ArrowDown => list_keys.push(BarKey::Down),
+                    Key::ArrowUp => list_keys.push(BarKey::ListUp),
+                    Key::ArrowDown => list_keys.push(BarKey::ListDown),
                     Key::ArrowLeft if modifiers.alt => list_keys.push(BarKey::Back),
                     Key::ArrowRight if modifiers.alt => list_keys.push(BarKey::Forward),
                     Key::A if modifiers.command => list_keys.push(BarKey::SelectAll),
                     Key::Z if modifiers.command && modifiers.shift => list_keys.push(BarKey::Redo),
                     Key::Z if modifiers.command => list_keys.push(BarKey::Undo),
                     Key::Y if modifiers.command => list_keys.push(BarKey::Redo),
-                    Key::Escape => deselect = true,
+                    Key::Escape => list_keys.push(BarKey::ListEscape),
                     Key::L if modifiers.command => refocus = true,
                     _ => {}
                 },
@@ -287,9 +319,6 @@ impl App {
         } else {
             for k in list_keys {
                 self.bar.key(k);
-            }
-            if deselect {
-                self.bar.clear_selection();
             }
         }
         if self.bar.error_count() != self.seen_errors {
@@ -369,8 +398,8 @@ impl App {
             // The current path is always visible, even while the bar holds a filter.
             ui.label(RichText::new(self.bar.view_dir_display()).monospace().strong());
             ui.label(format!("· {} of {} shown", self.bar.row_count(), self.bar.entry_count()));
-            if self.bar.selection_len() > 1 {
-                ui.label(format!("· {} selected", self.bar.selection_len()));
+            if let Some(info) = self.bar.selection_info() {
+                ui.label(format!("· {}", format::selection(info)));
             }
             if let Some(clip) = self.bar.clipboard_summary() {
                 ui.label(RichText::new(format!("[{clip}]")).strong().color(ACCENT));
@@ -417,6 +446,7 @@ impl App {
         let sort = bar.sort();
         let mut clicked: Option<(usize, bool, bool)> = None;
         let mut header_clicked = None;
+        let mut double_clicked = false;
         table
             .header(ROW_H, |mut h| {
                 for (title, key) in [
@@ -446,10 +476,12 @@ impl App {
                     let e = bar.row(r);
                     row.set_selected(bar.is_selected(r));
                     let is_hl = hl == Some(r);
+                    let tint =
+                        if is_hl { Some(highlight_tint()) } else { bar.is_other_match(r).then(other_match_tint) };
                     let paint_hl = |ui: &mut egui::Ui| {
-                        if is_hl {
+                        if let Some(tint) = tint {
                             let rect = ui.max_rect().expand2(egui::vec2(ui.spacing().item_spacing.x, 1.0));
-                            ui.painter().rect_filled(rect, 0.0, ACCENT.gamma_multiply(0.22));
+                            ui.painter().rect_filled(rect, 0.0, tint);
                         }
                     };
                     row.col(|ui| {
@@ -471,6 +503,9 @@ impl App {
                         ui.label(RichText::new(format::kind(&e.name, e.is_dir)).weak());
                     });
                     let resp = row.response();
+                    if resp.double_clicked() {
+                        double_clicked = true;
+                    }
                     if resp.clicked() {
                         let m = resp.ctx.input(|i| i.modifiers);
                         clicked = Some((r, m.command, m.shift));
@@ -479,6 +514,9 @@ impl App {
             });
         if let Some((row, ctrl, shift)) = clicked {
             self.bar.click_row(row, ctrl, shift);
+            if double_clicked {
+                self.bar.key(BarKey::Open);
+            }
         }
         if let Some(key) = header_clicked {
             self.bar.sort_by_column(key);

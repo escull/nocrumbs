@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a4ead7462d042aad83be7870ce59c1bf6394484fcb347cfa5d3cb10b08271e19 # shrinks to ops = [Key(ParentFolder), Key(SelectAll), Key(Delete), Key(Back)], case_insensitive = false, start = "/home/user"
+cc e8b29663f0cca46f0eacc2cc799cf53c696ecaf35c66c99e863efdc9d26e91af # shrinks to names = {"İa"}, pick = Index(0), cut = Index(0), recase = 2

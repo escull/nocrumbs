@@ -8,13 +8,13 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 
 | | |
 |---|---|
-| Requirements | 135 |
-| Implemented | 96 |
-| Partial | 14 |
+| Requirements | 137 |
+| Implemented | 105 |
+| Partial | 10 |
 | Manual (needs a human check) | 3 |
-| Planned | 22 |
+| Planned | 19 |
 | Acceptance criteria met (brief §15) | 5 of 12 |
-| Tests in the workspace | 216 (179 tied to a requirement) |
+| Tests in the workspace | 262 (223 tied to a requirement) |
 
 ## Acceptance criteria (brief §15)
 
@@ -25,7 +25,7 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 | 3 | Typing a partial name highlights the matching row in the same frame; Tab on a directory offers the next level immediately | yes |  |
 | 4 | Alias, filter, command and path input are disambiguated deterministically, with a visible mode chip | no | VIS-03 |
 | 5 | Command arguments (:mkdir "a b", :alias p ~/x, :cd C:\Windows) can be typed in full without placeholder interference | no | BAR-05 |
-| 6 | Every command in section 8 works; every key in section 10 works; nothing panics on invalid input (fuzz-tested parser) | no | CMD-11, FUZ-01, KEY-01, KEY-07, KEY-08, KEY-10 |
+| 6 | Every command in section 8 works; every key in section 10 works; nothing panics on invalid input (fuzz-tested parser) | no | CMD-11, KEY-07 |
 | 7 | Sorting is stable, folders-first, and survives filter and hidden toggles | yes |  |
 | 8 | Cut/paste across folders moves the item; collisions auto-rename; moving a folder into itself is rejected; the clipboard interoperates with Explorer in both directions | no | CLP-07 |
 | 9 | Delete goes to the Recycle Bin and Ctrl+Z restores it | no | TRS-01 |
@@ -78,10 +78,11 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 | CMP-12 | Enter acts on the completed text, as a browser's URL bar does | implemented | 2 |  |
 | CMP-13 | Candidates are ranked by frecency (use and recency), then alphabetically | implemented | 5 |  |
 | CMP-14 | While typing toward another folder the list previews it without navigating | implemented | 1 |  |
-| CMP-15 | Other matching candidates are signalled (+N more, fainter tint on their rows) | partial | 1 | the status line says +N more; the other matching rows are not tinted |
+| CMP-15 | Other matching candidates are signalled (+N more, fainter tint on their rows) | implemented | 6 |  |
 | CMP-16 | No completion is offered while an IME is composing | implemented | 2 |  |
 | CMP-17 | Moving the caret off the ghost commits it as typed text; no ghost when the caret is not at the end | implemented | 3 |  |
 | CMP-18 | :cd PATH and the path of :alias NAME PATH complete like a path, appending only | implemented | 3 |  |
+| CMP-19 | The ghost is cut by the name's own characters, even when lower-casing changes how many there are | implemented | 4 |  |
 
 ### 6 Aliases
 
@@ -124,7 +125,7 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 | CMD-08 | :rm moves the selection to the trash | implemented | 3 |  |
 | CMD-09 | :rm! deletes permanently, and always asks first (Enter confirms, Esc cancels) | implemented | 3 |  |
 | CMD-10 | :copy, :cut and :paste work on the selection | implemented | 4 |  |
-| CMD-11 | :open opens the selection with the OS default handler | planned | 0 | lands in M2 |
+| CMD-11 | :open opens the selection with the OS default handler | partial | 2 | the core enters folders and asks the front end to open files; launching the default handler comes with the Windows shell (M2) |
 | CMD-12 | :undo and :redo | implemented | 2 |  |
 | CMD-13 | :help gives a one-line reminder of every command | implemented | 1 |  |
 | CMD-14 | :log shows recent operations | implemented | 1 |  |
@@ -133,7 +134,7 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 | CMD-17 | Unknown commands and bad arguments give a friendly error with usage, never a crash | implemented | 4 |  |
 | CMD-18 | A successful command returns the bar to the idle path; an error keeps the text so it can be fixed | implemented | 2 |  |
 | CMD-19 | Command words are case-insensitive | implemented | 1 |  |
-| FUZ-01 | The bar parser is fuzz-tested: no input panics | planned | 0 | lands in M1 |
+| FUZ-01 | The bar parser is fuzz-tested: no input panics | implemented | 7 | randomised property tests (proptest) with shrinking, not coverage-guided fuzzing |
 | SRT-01 | Folders always sort before files; the direction applies within each group | implemented | 3 |  |
 | SRT-02 | Clicking a column header sorts by it, and clicking again flips the direction | implemented | 1 |  |
 
@@ -154,9 +155,10 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 | SEL-01 | Destructive operations act only on the explicit selection, never on the completion highlight | implemented | 2 |  |
 | SEL-02 | Multi-select: Ctrl+click toggles, Shift+click and Shift+arrows extend, Ctrl+A takes everything shown | implemented | 2 |  |
 | SEL-03 | The selection clears when the list changes | implemented | 3 |  |
-| SEL-04 | The status line states the selection count and total size | partial | 1 | the count is shown; the total size of the selection is not |
+| SEL-04 | The status line states the selection count and total size | implemented | 3 | the size is that of the selected files; folders are counted but their contents are not measured |
 | SEL-05 | Typing the path of a file selects it in its folder | implemented | 1 |  |
-| OPN-01 | Enter opens the selected row (folder: navigate; file: default handler), from the bar too when the text is unchanged since the arrow keys selected it | planned | 0 | lands in M1 |
+| HIS-01 | The current folder always exists: history skips folders that are gone, and removing the current folder moves to the nearest survivor | implemented | 5 |  |
+| OPN-01 | Enter opens the selected row (folder: navigate; file: the platform opens it), from the bar too when its text is unchanged since the arrow keys or a click selected it | implemented | 10 |  |
 | REN-01 | F2 renames inline in the name cell (basename pre-selected; Enter commits, Esc reverts) | planned | 0 | lands in M3 |
 | CLP-01 | Pasting into a folder with a colliding name renames the copy: name (2) before the extension | implemented | 2 |  |
 | CLP-02 | Cut then paste moves the item and uses up the clipboard; a copy can be pasted again | implemented | 3 |  |
@@ -179,16 +181,16 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 
 | ID | Requirement | Status | Tests | Notes |
 |---|---|---|---|---|
-| KEY-01 | / or Ctrl+L focuses the bar from anywhere | partial | 1 | / is tested; Ctrl+L is implemented but not asserted |
+| KEY-01 | / or Ctrl+L focuses the bar from anywhere | implemented | 2 |  |
 | KEY-02 | The first keystroke after focusing the bar replaces its whole content | implemented | 3 |  |
 | KEY-03 | Tab accepts the completion and never moves focus out of the bar | implemented | 2 |  |
-| KEY-04 | Up and Down move the row selection from the bar, wrapping | implemented | 2 |  |
+| KEY-04 | Up and Down move the row selection: wrapping from the bar, stopping at the ends in the list; Shift extends without wrapping | implemented | 4 |  |
 | KEY-05 | Alt+Left and Alt+Right go back and forward in the history | implemented | 2 |  |
 | KEY-06 | Backspace in the list goes up one folder | implemented | 2 |  |
 | KEY-07 | F2 rename | planned | 0 | lands in M3 |
-| KEY-08 | Del recycles; Shift+Del deletes permanently after confirming | partial | 1 | Del is implemented; Shift+Del is not bound (use :rm!) |
+| KEY-08 | Del recycles; Shift+Del deletes permanently after confirming | implemented | 6 | on Windows egui delivers Shift+Del as a Cut event; the tests send that event, the physical key has not been pressed in a test |
 | KEY-09 | Ctrl+Z and Ctrl+Y undo and redo; Ctrl+A selects all (in the list) | implemented | 2 |  |
-| KEY-10 | Esc is staged: remove the ghost, then clear the filter and revert the bar, then deselect, then blur | partial | 3 | ghost, revert and blur are tested in the core; clearing the selection on Esc is done by the egui front end and not asserted |
+| KEY-10 | Esc is staged: remove the ghost, then clear the filter and revert the bar, then deselect, then blur | implemented | 6 |  |
 
 ### 11 Visual direction
 
@@ -217,7 +219,7 @@ Each requirement maps to the tests that prove it. `cargo xtask spec` checks that
 | ID | Requirement | Status | Tests | Notes |
 |---|---|---|---|---|
 | ACC-01 | The bar, list and status line are exposed to screen readers (AccessKit) | manual | 0 | PARKED: check with Narrator (installed) or NVDA: the bar is announced as an edit field with its text, rows are reachable and announced, the status line is read. Not yet run; a gate before the bar is declared accessible and before any release (docs/spike.md) |
-| ACC-02 | Everything is operable by keyboard alone, with a visible focus indicator | partial | 3 | navigation and file operations work without the mouse; opening the selected row from a filter (OPN-01) and F2 rename do not yet |
+| ACC-02 | Everything is operable by keyboard alone, with a visible focus indicator | partial | 4 | navigation, filtering, opening and file operations work without the mouse; F2 inline rename is not built (use :rename), and the focus indicator has not been reviewed |
 | ACC-03 | IME composition works in the bar | partial | 2 | completion is suppressed during composition (tested through egui's IME events); a real IME on a real window was skipped on 2026-11-23 for lack of an installed IME and is still unchecked |
 | ACC-04 | Full Unicode names are matched, shown and never rewritten on disk | partial | 2 | matching and storage handle Unicode; the default egui fonts draw tofu for scripts they lack, so a font fallback stack is needed (M2) |
 | ACC-05 | High-contrast mode, OS text scaling and reduced motion are respected | planned | 0 | lands in M3 |

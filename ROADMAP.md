@@ -1,6 +1,6 @@
 # NoCrumbs roadmap
 
-Last reviewed: 2026-11-23 | Last updated: 2026-11-23 | Change: M0 hand checks done (ghost, mouse, DPI pass; screen reader parked, IME skipped); estimates unchanged
+Last reviewed: 2026-11-25 | Last updated: 2026-11-25 | Change: the small M1 gaps are closed; property tests found and fixed two bugs; estimates unchanged
 
 One-page summary of where NoCrumbs is, what comes next, and what could go wrong. NoCrumbs is a native Rust/egui single-exe file explorer driven by one address bar (Windows first, then Linux, then macOS). The *what* is in [DESIGN_BRIEF.md](DESIGN_BRIEF.md); this file is the *where we are*.
 
@@ -34,8 +34,8 @@ Keep it current: every working session, update the milestone row and add one lin
 | | Value | Kind |
 |---|---|---|
 | Acceptance criteria met (§15) | 5 of 12 | measured, `cargo xtask spec` |
-| Requirements | 135: 96 implemented, 14 partial, 3 manual (need a human), 22 planned | measured, `cargo xtask spec` |
-| Tests tied to a requirement | 179 of 216, and all 179 pass | measured, `cargo xtask spec --run` |
+| Requirements | 137: 105 implemented, 10 partial, 3 manual (need a human), 19 planned | measured, `cargo xtask spec` |
+| Tests tied to a requirement | 223 of 262, and all 223 pass | measured, `cargo xtask spec --run` |
 | 100k-row folder, keystroke cost (optimised, headless) | 6–9 ms typing, ≈ 13 ms per glob-filter keystroke; ≈ 1 ms/frame idle | measured, see `docs/spike.md` |
 | Remaining to alpha | ≈ 50–95 focused hours | estimated, uncalibrated |
 | Remaining to Windows 1.0 | ≈ 120–230 focused hours | estimated, uncalibrated |
@@ -48,7 +48,7 @@ Keep it current: every working session, update the milestone row and add one lin
 | # | Milestone | Status | Estimate (h) | Exit criteria |
 |---|---|---|---|---|
 | M0 | **Spike**: egui bar with ghost text, 100k-row virtual list, IME, AccessKit pass | **done, 2 checks parked**: ghost text, 100k list, mouse and high DPI verified by tests and by hand; screen reader and IME parked (ACC-01, ACC-03) | 8–16 | Go/no-go note in `docs/spike.md`; the three risks in brief §3.2 each answered with evidence |
-| M1 | **Core**: `nocrumbs-core` + `nocrumbs-testfs` + keystroke-test harness; `spec/requirements.toml` | **nearly done**: everything in brief §4–§9 that does not need a real OS is built and spec-tracked; open: OPN-01, FUZ-01 and a few `partial` rows | 40–80 | Brief §4–§8 pass headless; every bug from the HTML concept is a regression test (§16) |
+| M1 | **Core**: `nocrumbs-core` + `nocrumbs-testfs` + keystroke-test harness; `spec/requirements.toml` | **done**: brief §4–§9 is built and spec-tracked as far as it can be without a real OS; what is left there is `planned` for M2/M3 or a `partial` row in `spec/COVERAGE.md` | 40–80 | Brief §4–§8 pass headless; every bug from the HTML concept is a regression test (§16) |
 | M2 | **Windows shell**: real `Fs`/`Platform`, async listing, Recycle Bin, clipboard interop, watcher, config/history | not started | 40–70 | §15 items 8–11 met on Windows; portable mode works |
 | M3 | **UI polish, accessibility, signed release** | not started | 30–60 | All §15 met; accessibility checks in §13, including the parked M0 screen-reader (ACC-01) and IME (ACC-03) checks; **v1.0 (Windows)** |
 | M4 | **Linux port** | not started | 30–60 | Core unchanged; platform crate only |
@@ -61,9 +61,8 @@ Ranked; the next thing to do is first.
 | Rank | Work | Estimate (h) |
 |---|---|---|
 | 0 | Run the parked M0 checks when a tester or tools are available: Narrator or NVDA on the bar and list (ACC-01), a real IME (ACC-03) | 1–2 |
-| 1 | Close the last M1 gaps: OPN-01 (Enter opens the selected row), FUZ-01 (fuzz/property tests for the parser), CMP-15 (tint other matches), SEL-04 (selection size), KEY-08 (Shift+Del) | 8–16 |
-| 4 | Windows shell (M2): real `Fs` with Recycle Bin, `CF_HDROP` clipboard interop, async operations with progress and cancel, file watcher, `:open` | 40–70 |
-| 5 | Font fallback stack for arbitrary file names (CJK, Arabic, Thai, emoji): default egui fonts draw tofu | 6–12 |
+| 1 | Windows shell (M2): real `Fs` with Recycle Bin, `CF_HDROP` clipboard interop, async operations with progress and cancel, file watcher, `:open` | 40–70 |
+| 2 | Font fallback stack for arbitrary file names (CJK, Arabic, Thai, emoji): default egui fonts draw tofu | 6–12 |
 
 ## Risks
 
@@ -83,6 +82,8 @@ Tracked in the brief, §18 (toolkit is decided: egui/eframe). Next ones to settl
 ## Progress log
 
 Newest first. One line per entry: date (milestone, what changed); estimates unchanged/changed.
+
+2026-11-25 (M1): Closed the small gaps: Enter opens the selected row (also straight from a filter) and `:open` asks the platform to open files (OPN-01); Shift+Del deletes for good after asking, including Windows' habit of delivering it as Cut, which would have silently cut (KEY-08); list-focus Enter and Esc; Esc now deselects before it blurs, and arrows stop at the ends in the list, both per brief §10; selection count and size in the status line (SEL-04); other matching rows tinted (CMP-15); property tests for the parser and whole bar (FUZ-01). The property tests found two real bugs, now fixed and pinned in `regressions.rs`: history, delete and undo could leave the bar in a folder that no longer exists, and completion dropped a letter in names containing `İ` (lower-casing changes the character count). M1 done. Estimates unchanged.
 
 2026-11-23 (M0): Hand checks run on a real window at 150% scaling. Ghost text, mouse behaviour and the narrow-window layout pass; a real session wrote a correct settings file. Screen reader parked (Narrator is installed but nobody could run it) and IME skipped (none installed): both stay open as ACC-01 and ACC-03, recorded as gates for M3 and release, not as passes. M0 verdict: go on egui. Estimates unchanged.
 

@@ -1,4 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use nocrumbs_core::SelectionInfo;
+
+/// `1 selected, 1.4 KB`, `3 selected, 1.7 KB + 1 folder`, `2 selected (2 folders)`.
+pub fn selection(i: SelectionInfo) -> String {
+    let folders = match i.folders {
+        1 => "1 folder".to_string(),
+        n => format!("{n} folders"),
+    };
+    match (i.files, i.folders) {
+        (0, _) => format!("{} selected ({folders})", i.count),
+        (_, 0) => format!("{} selected, {}", i.count, size(i.file_bytes)),
+        _ => format!("{} selected, {} + {folders}", i.count, size(i.file_bytes)),
+    }
+}
 
 pub fn size(bytes: u64) -> String {
     if bytes < 1024 {
@@ -46,6 +60,14 @@ pub fn kind(name: &str, is_dir: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selection_summaries() {
+        let info = |files, folders, file_bytes| SelectionInfo { count: files + folders, files, folders, file_bytes };
+        assert_eq!(selection(info(1, 0, 1_420)), "1 selected, 1.4 KB");
+        assert_eq!(selection(info(2, 1, 1_740)), "3 selected, 1.7 KB + 1 folder");
+        assert_eq!(selection(info(0, 2, 0)), "2 selected (2 folders)");
+    }
 
     #[test]
     fn formats() {

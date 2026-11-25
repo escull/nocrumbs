@@ -14,4 +14,4 @@
 mod app;
 mod format;
 
-pub use app::{App, setup};
+pub use app::{App, other_match_tint, setup};

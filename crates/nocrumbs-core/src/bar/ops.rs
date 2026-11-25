@@ -55,10 +55,18 @@ impl Bar {
 
     /// Re-read the shown folder (after a change, or when a watcher reports one).
     pub fn refresh(&mut self) {
+        let moved = self.leave_missing_folder();
         self.entries = std::sync::Arc::from(Vec::new());
         self.view_key = None;
         self.analysed_for = None;
-        self.reanalyze();
+        if moved {
+            // The bar's text named the folder that is gone: show where we are now.
+            self.go_idle();
+            let shown = self.display_cwd();
+            self.set_status(format!("That folder is gone. Now in {shown}"), Tone::Warn);
+        } else {
+            self.reanalyze();
+        }
     }
 
     fn log_line(&mut self, line: String) {
@@ -222,6 +230,39 @@ impl Bar {
             return true;
         }
         false
+    }
+
+    // ----- open -----
+
+    /// Enter on a selected row, and `:open` (brief section 9.3): a folder is entered; a file is
+    /// handed to the front end to open with the system's default handler. With several rows
+    /// selected, the one the cursor is on is opened.
+    pub(super) fn open_selected(&mut self) {
+        let row = self.selected.filter(|r| self.is_selected(*r)).or_else(|| self.selected_rows().first().copied());
+        let Some(row) = row else {
+            return self.error("Select an entry first".to_string());
+        };
+        let (name, is_dir) = (self.row(row).name.clone(), self.row(row).is_dir);
+        let dir = self.view_dir.clone();
+        let path = join(&dir, &name);
+        if !self.exists_in(&dir, &name) {
+            self.refresh();
+            return self.error(format!("{name} no longer exists"));
+        }
+        self.record_visit(&path);
+        if is_dir {
+            self.navigate(path);
+            let shown = self.display_cwd();
+            self.set_status(format!("Now in {shown}"), Tone::Good);
+        } else {
+            self.open_request = Some(path);
+            // A typed `:open` is finished; a filter or path stays, so work can continue there.
+            if self.text.starts_with(':') {
+                self.finish_line();
+            }
+            self.set_status(format!("Opening {name}"), Tone::Good);
+        }
+        self.save_state();
     }
 
     // ----- clipboard -----

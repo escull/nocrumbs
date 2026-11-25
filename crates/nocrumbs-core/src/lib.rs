@@ -24,7 +24,7 @@ pub mod sim;
 mod state;
 
 pub use alias::Aliases;
-pub use bar::{Bar, EditKind, Key, Sel, Tone};
+pub use bar::{Bar, EditKind, Key, Sel, SelectionInfo, Tone};
 pub use command::{Command, CommandError, HELP, SortDir, SortKey, parse as parse_command};
 pub use complete::{
     AliasUse, Analysis, BarContext, Completion, CompletionKind, Mode, ResolveError, Resolved, analyze, display_path,

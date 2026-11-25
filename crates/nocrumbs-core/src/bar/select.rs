@@ -7,6 +7,27 @@
 
 use super::Bar;
 
+/// How an arrow key moves the cursor row (brief section 10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Step {
+    /// From the bar: past one end comes out at the other.
+    Wrap,
+    /// In the list: stop at the ends.
+    Clamp,
+    /// With Shift: grow the selection, stopping at the ends (wrapping would select nearly all).
+    Extend,
+}
+
+/// What the status line says about the selection (brief section 9.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectionInfo {
+    pub count: usize,
+    pub files: usize,
+    pub folders: usize,
+    /// Total size of the selected **files**. Folder sizes are not known without walking them.
+    pub file_bytes: u64,
+}
+
 impl Bar {
     pub fn is_selected(&self, row: usize) -> bool {
         self.selection.contains(&row)
@@ -25,10 +46,29 @@ impl Bar {
         self.selection.iter().map(|&r| self.row(r).name.as_str()).collect()
     }
 
+    /// Count and total size of the selection, or `None` if nothing is selected.
+    pub fn selection_info(&self) -> Option<SelectionInfo> {
+        if self.selection.is_empty() {
+            return None;
+        }
+        let mut info = SelectionInfo { count: self.selection.len(), files: 0, folders: 0, file_bytes: 0 };
+        for &r in &self.selection {
+            let e = self.row(r);
+            if e.is_dir {
+                info.folders += 1;
+            } else {
+                info.files += 1;
+                info.file_bytes = info.file_bytes.saturating_add(e.size);
+            }
+        }
+        Some(info)
+    }
+
     pub fn clear_selection(&mut self) {
         self.selection.clear();
         self.selected = None;
         self.anchor = None;
+        self.enter_opens = false;
     }
 
     /// Select just this row (or nothing).
@@ -71,6 +111,7 @@ impl Bar {
             return;
         }
         self.selection = (0..self.rows.len()).collect();
+        self.enter_opens = true;
         self.selected.get_or_insert(0);
         self.anchor.get_or_insert(0);
         let n = self.selection.len();
@@ -84,6 +125,7 @@ impl Bar {
             (true, false) => self.toggle_row(row),
             (false, false) => self.select_row(Some(row)),
         }
+        self.enter_opens = true;
     }
 
     /// Select the rows with these names (after a create, rename or paste).
@@ -112,8 +154,8 @@ impl Bar {
             .collect()
     }
 
-    /// Up/Down: move the cursor row (wrapping); with `extend`, grow the selection to it.
-    pub(super) fn move_selection(&mut self, dir: i32, extend: bool) {
+    /// Up/Down: move the cursor row, or with `Step::Extend` grow the selection to it.
+    pub(super) fn move_selection(&mut self, dir: i32, step: Step) {
         let n = self.rows.len();
         if n == 0 {
             return;
@@ -121,13 +163,15 @@ impl Bar {
         let next = match (self.selected, dir) {
             (None, d) if d > 0 => 0,
             (None, _) => n - 1,
-            (Some(i), d) => ((i as i64 + i64::from(d)).rem_euclid(n as i64)) as usize,
+            (Some(i), d) if step == Step::Wrap => ((i as i64 + i64::from(d)).rem_euclid(n as i64)) as usize,
+            (Some(i), d) => (i as i64 + i64::from(d)).clamp(0, n as i64 - 1) as usize,
         };
-        if extend {
+        if step == Step::Extend {
             self.extend_to(next);
         } else {
             self.select_row(Some(next));
         }
+        self.enter_opens = true;
         self.scroll_request = Some(next);
     }
 }

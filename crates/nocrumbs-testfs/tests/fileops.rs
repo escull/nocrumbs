@@ -525,13 +525,6 @@ fn backspace_in_the_list_goes_up_one_folder() {
 }
 
 #[test]
-fn open_is_a_platform_job() {
-    let (mut s, _) = setup();
-    run(&mut s, ":open");
-    assert_eq!(status(&s).0, "Opening files comes with the Windows shell");
-}
-
-#[test]
 fn a_read_only_filesystem_says_what_it_cannot_do() {
     #[derive(Debug)]
     struct ReadOnly(MemFs);

@@ -7,6 +7,7 @@
 use egui::text_edit::TextEditState;
 use egui::{Event, ImeEvent, Key, Vec2};
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use m0_ghost_bar::{App, setup};
 
 struct Ui<'a> {
@@ -368,4 +369,114 @@ fn aliases_and_history_survive_a_restart_through_a_real_settings_file() {
     second.type_str("Do");
     assert_eq!(second.app().text(), "Downloads/", "the folder used last time is offered first");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn enter_after_the_arrows_opens_the_selection_in_the_real_widget() {
+    let mut u = Ui::new(1_000);
+    u.key(Key::ArrowDown);
+    u.key(Key::Enter);
+    assert_eq!(u.app().cwd(), "/home/user/Documents");
+    assert!(u.focused(), "the bar keeps focus");
+
+    let mut u = Ui::new(1_000);
+    u.type_str("~/Downloads/*.pdf");
+    u.key(Key::ArrowDown);
+    u.key(Key::Enter);
+    assert_eq!(u.app().last_opened(), Some("/home/user/Downloads/invoice-nov.pdf"));
+    assert!(u.app().status_text().starts_with("Would open "), "{}", u.app().status_text());
+    assert_eq!(u.app().text(), "~/Downloads/*.pdf");
+}
+
+/// Blur the idle bar and select the first row.
+fn in_the_list(u: &mut Ui) {
+    u.key(Key::Escape);
+    assert!(!u.focused());
+    u.key(Key::ArrowDown);
+}
+
+#[test]
+fn shift_del_as_windows_sends_it_asks_to_delete_for_good_and_never_cuts() {
+    // egui-winit turns Shift+Del into a Cut event on Windows, with no key event at all.
+    let mut u = Ui::new(1_000);
+    in_the_list(&mut u);
+    let before = u.app().shown_rows();
+    u.h.event_modifiers(Event::Cut, egui::Modifiers::SHIFT);
+    u.h.run_steps(2);
+    assert!(u.app().status_text().contains("permanently"), "{}", u.app().status_text());
+    assert_eq!(u.app().bar().clipboard_summary(), None, "nothing was cut");
+    assert_eq!(u.app().shown_rows(), before, "nothing deleted before confirming");
+    u.key(Key::Enter);
+    assert_eq!(u.app().shown_rows(), before - 1, "Enter in the list confirms");
+}
+
+#[test]
+fn shift_del_as_other_platforms_send_it_does_the_same() {
+    let mut u = Ui::new(1_000);
+    in_the_list(&mut u);
+    u.h.key_press_modifiers(egui::Modifiers::SHIFT, Key::Delete);
+    u.h.run_steps(2);
+    assert!(u.app().status_text().contains("permanently"));
+    u.key(Key::Escape);
+    assert!(u.app().status_text().starts_with("Cancelled"));
+}
+
+#[test]
+fn a_plain_cut_in_the_list_still_cuts() {
+    let mut u = Ui::new(1_000);
+    in_the_list(&mut u);
+    u.h.event_modifiers(Event::Cut, egui::Modifiers::COMMAND);
+    u.h.run_steps(2);
+    assert_eq!(u.app().bar().clipboard_summary().as_deref(), Some("Cut Documents"));
+}
+
+#[test]
+fn esc_in_the_list_clears_the_selection_and_enter_opens_it() {
+    let mut u = Ui::new(1_000);
+    in_the_list(&mut u);
+    u.key(Key::Escape);
+    assert_eq!(u.app().bar().selection_len(), 0);
+    u.key(Key::ArrowDown);
+    u.key(Key::Enter);
+    assert_eq!(u.app().cwd(), "/home/user/Documents");
+}
+
+#[test]
+fn ctrl_l_gives_the_bar_focus_back() {
+    let mut u = Ui::new(1_000);
+    u.key(Key::Escape);
+    assert!(!u.focused());
+    u.h.key_press_modifiers(egui::Modifiers::COMMAND, Key::L);
+    u.h.run_steps(2);
+    assert!(u.focused());
+}
+
+#[test]
+fn the_status_line_states_the_selection_count_and_size() {
+    let mut u = Ui::new(1_000);
+    assert!(u.h.query_by_label_contains("selected").is_none(), "nothing selected, nothing said");
+    u.type_str("notes.md");
+    u.key(Key::Enter); // selects the file
+    u.h.get_by_label_contains("1 selected, 1.4 KB");
+}
+
+/// Is a filled rectangle of this colour painted anywhere in the last frame?
+fn painted(shape: &egui::Shape, colour: egui::Color32) -> bool {
+    match shape {
+        egui::Shape::Rect(r) => r.fill == colour,
+        egui::Shape::Vec(v) => v.iter().any(|s| painted(s, colour)),
+        _ => false,
+    }
+}
+
+#[test]
+fn other_matching_rows_get_a_fainter_tint_on_screen() {
+    let mut u = Ui::new(1_000);
+    let tinted = |u: &Ui| u.h.output().shapes.iter().any(|c| painted(&c.shape, m0_ghost_bar::other_match_tint()));
+    u.type_str("Doc");
+    assert!(!tinted(&u), "only one match");
+    u.key(Key::Escape);
+    u.key(Key::Escape);
+    u.type_str("Do");
+    assert!(tinted(&u), "Downloads also matches");
 }

@@ -12,3 +12,6 @@ nocrumbs-core = { version = "0.0.1", path = "../nocrumbs-core" }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest = "1.12.0"

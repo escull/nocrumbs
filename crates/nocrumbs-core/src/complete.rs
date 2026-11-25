@@ -18,7 +18,7 @@ use crate::alias::Aliases;
 use crate::frecency::Frecency;
 use crate::fs::Fs;
 use crate::glob::Glob;
-use crate::path::{fold_cmp, is_sep, normalize, starts_with};
+use crate::path::{fold_cmp, is_sep, normalize, prefix_chars, starts_with};
 
 /// Everything [`analyze`] needs to know about the world.
 pub struct BarContext<'a> {
@@ -81,6 +81,10 @@ pub struct Completion {
     pub accepted: String,
     /// How many candidates matched (so the UI can say `+N more`).
     pub matches: usize,
+    /// The part of the last segment that was typed, which every candidate starts with.
+    pub partial: String,
+    /// Whether the candidates were matched ignoring case.
+    pub folded: bool,
 }
 
 /// An alias the typed input goes through.
@@ -345,8 +349,10 @@ fn complete_entry(head: &str, partial: &str, ctx: &BarContext<'_>) -> Option<Com
     // Case-sensitive filesystems prefer exact-case matches, then fold.
     let mut best: Option<Cand<'_>> = None;
     let mut count = 0usize;
+    let mut folded = ci;
     for pass in 0..2 {
         let fold = ci || pass == 1;
+        folded = fold;
         for e in entries.iter() {
             if (e.hidden && !want_hidden) || !starts_with(&e.name, partial, fold) {
                 continue;
@@ -371,13 +377,24 @@ fn complete_entry(head: &str, partial: &str, ctx: &BarContext<'_>) -> Option<Com
     let Cand { name, kind, is_dir, .. } = best?;
 
     let sep = head.chars().last().filter(|c| is_sep(*c)).unwrap_or(ctx.sep);
-    let mut ghost: String = name.chars().skip(partial.chars().count()).collect();
+    // Cut the ghost where the typed text stops *in the name* (see `prefix_chars`).
+    let covered = prefix_chars(name, partial, folded)?;
+    let mut ghost: String = name.chars().skip(covered).collect();
     let mut accepted = format!("{head}{name}");
     if is_dir {
         ghost.push(sep);
         accepted.push(sep);
     }
-    Some(Completion { name: name.to_string(), kind, is_dir, ghost, accepted, matches: count })
+    Some(Completion {
+        name: name.to_string(),
+        kind,
+        is_dir,
+        ghost,
+        accepted,
+        matches: count,
+        partial: partial.to_string(),
+        folded,
+    })
 }
 
 /// One completion candidate, with how much the user has used it.
@@ -447,5 +464,7 @@ fn complete_command(input: &str) -> Option<Completion> {
         ghost: best.chars().skip(input.chars().count()).collect(),
         accepted: best.clone(),
         matches,
+        partial: input.to_string(),
+        folded: true,
     })
 }
